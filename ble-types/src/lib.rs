@@ -1,3 +1,11 @@
+#![no_std]
+
+use heapless::String;
+
+struct PingMessage {
+    ping_target: String<20>,
+}
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }

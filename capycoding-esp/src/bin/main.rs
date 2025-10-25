@@ -8,12 +8,16 @@
 
 use capycoding_esp::ble::ble_task;
 use capycoding_esp::wifi::wifi_task;
-use capycoding_esp::{WeactTermInitPins, ui_task};
+use capycoding_esp::{CapyState, WeactTermInitPins, ui_task};
 use embassy_executor::Spawner;
+use embedded_storage::{ReadStorage, Storage};
 use esp_backtrace as _;
+use esp_bootloader_esp_idf::partitions;
 use esp_hal::clock::CpuClock;
 use esp_hal::spi::{self, master::Spi};
 use esp_hal::{time::Rate, timer::timg::TimerGroup};
+use esp_storage::FlashStorage;
+
 use log::info;
 use static_cell::StaticCell;
 
@@ -73,4 +77,76 @@ async fn main(spawner: Spawner) -> () {
     spawner.spawn(ble_task(radio, peripherals.BT)).unwrap();
     spawner.spawn(wifi_task(radio, peripherals.WIFI)).unwrap();
     spawner.spawn(ui_task(spi_bus, term_init_pins)).unwrap();
+
+    let mut flash = FlashStorage::new(peripherals.FLASH);
+
+    let mut state = CapyState::load(&mut flash);
+    state.wifi_credentials.ssid = "lol".try_into().unwrap();
+    state.wifi_credentials.password = "lol123".try_into().unwrap();
+    state.api_tokens.github = "abcdefg".try_into().unwrap();
+    state.write(&mut flash);
+
+    info!("State: {state:?}");
+
+    // let mut pt_mem = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
+
+    // let pt = partitions::read_partition_table(&mut flash, &mut pt_mem).unwrap();
+
+    // for i in 0..pt.len() {
+    //     let raw = pt.get_partition(i).unwrap();
+    //     info!("pt i:{i}, value: {raw:?}");
+    // }
+
+    // let nvs = pt
+    //     .find_partition(partitions::PartitionType::Data(
+    //         partitions::DataPartitionSubType::Nvs,
+    //     ))
+    //     .unwrap()
+    //     .unwrap();
+
+    // let mut nvs_partition = nvs.as_embedded_storage(&mut flash);
+
+    // let mut bytes = [0u8; 32];
+    // info!("NVS partition size = {}", nvs_partition.capacity());
+
+    // let offset_in_nvs_partition = 0;
+
+    // nvs_partition
+    //     .read(offset_in_nvs_partition, &mut bytes)
+    //     .unwrap();
+    // info!(
+    //     "Read from {:x}:  {:02x?}",
+    //     offset_in_nvs_partition,
+    //     &bytes[..32]
+    // );
+
+    // bytes[0x00] = bytes[0x00].wrapping_add(1);
+    // bytes[0x01] = bytes[0x01].wrapping_add(2);
+    // bytes[0x02] = bytes[0x02].wrapping_add(3);
+    // bytes[0x03] = bytes[0x03].wrapping_add(4);
+    // bytes[0x04] = bytes[0x04].wrapping_add(1);
+    // bytes[0x05] = bytes[0x05].wrapping_add(2);
+    // bytes[0x06] = bytes[0x06].wrapping_add(3);
+    // bytes[0x07] = bytes[0x07].wrapping_add(4);
+
+    // nvs_partition
+    //     .write(offset_in_nvs_partition, &bytes)
+    //     .unwrap();
+    // info!(
+    //     "Written to {:x}: {:02x?}",
+    //     offset_in_nvs_partition,
+    //     &bytes[..32]
+    // );
+
+    // let mut reread_bytes = [0u8; 32];
+    // nvs_partition.read(0, &mut reread_bytes).unwrap();
+    // info!(
+    //     "Read from {:x}:  {:02x?}",
+    //     offset_in_nvs_partition,
+    //     &reread_bytes[..32]
+    // );
+
+    // info!("Reset (CTRL-R in espflash) to re-read the persisted data.");
+
+    // loop {}
 }
