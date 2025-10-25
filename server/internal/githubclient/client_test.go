@@ -155,3 +155,57 @@ func newTestClient(t *testing.T, server *httptest.Server) *Client {
 
 	return NewFromGitHubClient(api)
 }
+
+func TestCloneWithToken(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reuse base when token empty", func(t *testing.T) {
+		t.Parallel()
+
+		base, err := NewClient(context.Background(), WithToken("base-token"))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		clone, err := base.CloneWithToken(context.Background(), "")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if clone != base {
+			t.Fatalf("expected clone to reuse base client")
+		}
+	})
+
+	t.Run("override token", func(t *testing.T) {
+		t.Parallel()
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get("Authorization"); got != "Bearer override-token" {
+				t.Fatalf("unexpected authorization header: %s", got)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[]`))
+		}))
+		defer server.Close()
+
+		ctx := context.Background()
+		base, err := NewClient(ctx, WithToken("base-token"), WithBaseURLs(server.URL, server.URL))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		clone, err := base.CloneWithToken(ctx, "override-token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if clone == base {
+			t.Fatalf("expected a new client when overriding the token")
+		}
+
+		if _, err := clone.PullRequestStatuses(ctx, Repository{Owner: "owner", Name: "repo"}, PullRequestOptions{}); err != nil {
+			t.Fatalf("unexpected error calling API: %v", err)
+		}
+	})
+}
