@@ -7,24 +7,14 @@
 )]
 
 use bt_hci::controller::ExternalController;
-use capycoding_esp::{CapyTerm, WeactTermInitPins, alloc::fmt::format};
+use capycoding_esp::WeactTermInitPins;
+use capycoding_esp::widgets::root_draw;
 use embassy_executor::Spawner;
 use esp_backtrace as _;
-use esp_hal::{
-    Blocking,
-    clock::CpuClock,
-    peripherals::GPIO3,
-    spi::{self, master::Spi},
-    time::Rate,
-    timer::timg::TimerGroup,
-};
+use esp_hal::spi::{self, master::Spi};
+use esp_hal::{Blocking, clock::CpuClock, time::Rate, timer::timg::TimerGroup};
 use esp_radio::ble::controller::BleConnector;
 use log::info;
-use ratatui::{
-    Frame,
-    style::{Style, Stylize},
-    widgets::{Block, Paragraph, Wrap},
-};
 use trouble_host::prelude::*;
 use weact_studio_epd::graphics::Display290BlackWhite;
 
@@ -37,8 +27,6 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> () {
-    // generator version: 0.6.0
-
     esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
@@ -70,9 +58,7 @@ async fn main(spawner: Spawner) -> () {
         HostResources::new();
     let _stack = trouble_host::new(ble_controller, &mut resources);
 
-    // // TODO: Spawn some tasks
-    // let _ = spawner;
-
+    // * INIT TERM *//
     let mosi_pin = peripherals.GPIO5;
     let sclk_pin = peripherals.GPIO4;
 
@@ -93,43 +79,16 @@ async fn main(spawner: Spawner) -> () {
         busy_pin: peripherals.GPIO0,
     };
 
+    // * RENDER TASK * //
     spawner.spawn(render(spi_bus, term_init_pins)).unwrap();
-
-    // Run an infinite loop, where widgets will be rendered
-
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.1/examples/src/bin
 }
 
-// async fn render(mut term: CapyTerm<'static>, spi: Spi<'static, Blocking>) {
 #[embassy_executor::task]
 async fn render(spi: Spi<'static, Blocking>, term_init_pins: WeactTermInitPins) {
-    info!("we are render");
+    info!("Render Task Initiated!");
     let mut display = Display290BlackWhite::new();
-    let mut term = capycoding_esp::setup_weact_term(
-        spi,
-        &mut display,
-        term_init_pins.cs_pin,
-        term_init_pins.dc_pin,
-        term_init_pins.rst_pin,
-        term_init_pins.busy_pin,
-    );
-    let mut i = 0;
+    let mut term = capycoding_esp::setup_weact_term(spi, &mut display, term_init_pins);
     loop {
-        term.draw(|f| {
-            draw(f, &mut i)
-            // f.render_widget(draw(), area);
-        })
-        .unwrap();
-
-        i += 1;
+        term.draw(|f| root_draw(f)).unwrap();
     }
-}
-
-fn draw(frame: &mut Frame, i: &mut i32) {
-    let text = format(format_args!("Ratatui on embedded devices! {i}"));
-    let paragraph = Paragraph::new(text.dark_gray()).wrap(Wrap { trim: true });
-    let bordered_block = Block::bordered()
-        .border_style(Style::new().yellow())
-        .title("Mousefood");
-    frame.render_widget(paragraph.block(bordered_block), frame.area());
 }
