@@ -7,6 +7,7 @@ use heapless::String;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
 use static_cell::StaticCell;
+use ble_types::{WifiCredentials, Tokens};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct CapyConfig {
@@ -14,16 +15,6 @@ pub struct CapyConfig {
     pub wifi_credentials: WifiCredentials,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct WifiCredentials {
-    pub ssid: String<30>,
-    pub password: String<30>,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Tokens {
-    pub github: String<30>,
-}
 
 pub type CapyConfigHandle = &'static Mutex<CriticalSectionRawMutex, Option<CapyConfig>>;
 impl CapyConfig {

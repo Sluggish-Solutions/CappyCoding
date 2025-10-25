@@ -18,6 +18,7 @@ dependencies = [
  "heapless 0.9.1",
  "postcard",
  "serde",
+ "uuid",
 ]
 
 [[package]]
@@ -80,6 +81,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1edcd5a338e64688fbdcb7531a846cfd3476a54784dcb918a0844682bc7ada5"
 dependencies = [
  "hash32 0.3.1",
+ "serde",
  "stable_deref_trait",
 ]
 
@@ -223,3 +225,9 @@ name = "unicode-ident"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "462eeb75aeb73aea900253ce739c8e18a67423fadf006037cd3ff27e82748a06"
+
+[[package]]
+name = "uuid"
+version = "1.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f87b8aa10b915a06587d0dec516c282ff295b475d94abf425d62b57710070a2"

@@ -80,6 +80,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
+name = "ble-types"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.9.1",
+ "postcard",
+ "serde",
+ "uuid",
+]
+
+[[package]]
 name = "bt-hci"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -130,10 +140,12 @@ checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 name = "capycoding-esp"
 version = "0.1.0"
 dependencies = [
+ "ble-types",
  "bt-hci",
  "critical-section",
  "display-interface-spi",
  "embassy-executor",
+ "embassy-futures",
  "embassy-net",
  "embassy-sync 0.7.2",
  "embassy-time",

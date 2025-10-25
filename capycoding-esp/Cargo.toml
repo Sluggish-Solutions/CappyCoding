@@ -94,6 +94,11 @@ embedded-storage = "0.3.1"
 embassy-sync = "0.7.2"
 
 
+
+embassy-futures = "0.1.2"
+
+ble-types = {path = "../ble-types"}
+
 [patch.crates-io]
 ratatui = { git = "https://github.com/suri-codes/ratatui.git", branch = "main" }
 ratatui-core = { git = "https://github.com/suri-codes/ratatui.git", branch = "main" }

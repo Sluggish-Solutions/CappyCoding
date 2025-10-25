@@ -16,6 +16,8 @@ use esp_hal::spi::{self, master::Spi};
 use esp_hal::{time::Rate, timer::timg::TimerGroup};
 use esp_storage::FlashStorage;
 
+use esp_backtrace as _;
+
 use log::info;
 use static_cell::StaticCell;
 
