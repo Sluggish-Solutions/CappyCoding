@@ -2,11 +2,10 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	nethttp "net/http"
 	"net/http/httptest"
-	"sync"
+	"strings"
 	"testing"
 
 	"github.com/google/go-github/v55/github"
@@ -115,87 +114,48 @@ func TestResolveClient(t *testing.T) {
 	})
 }
 
-func TestRegisterRoutes_HeaderOverrideWithoutBaseClient(t *testing.T) {
-	// this test mutates package level defaults so it cannot run in parallel
-
-	originalBaseURL := defaultBaseURL
-	originalUploadURL := defaultUploadURL
-	defer func() {
-		defaultBaseURL = originalBaseURL
-		defaultUploadURL = originalUploadURL
-	}()
-
-	const token = "override"
-
-	var (
-		observedPath string
-		observedAuth string
-		mu           sync.Mutex
-	)
-
-	ts := httptest.NewServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
-		mu.Lock()
-		observedPath = r.URL.Path
-		observedAuth = r.Header.Get("Authorization")
-		mu.Unlock()
+func TestRegisterRoutesWithoutBaseClient(t *testing.T) {
+	server := httptest.NewServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		if r.URL.Path != "/repos/owner/repo/pulls" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer override-token" {
+			t.Fatalf("unexpected authorization header: %s", got)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode([]map[string]any{
-			{
-				"number":     1,
-				"title":      "Example",
-				"state":      "open",
-				"html_url":   "https://example.com/pr/1",
-				"updated_at": "2024-01-02T03:04:05Z",
-				"user": map[string]any{
-					"login": "octocat",
-				},
-			},
-		}); err != nil {
-			t.Fatalf("failed to write response: %v", err)
-		}
+		_, _ = w.Write([]byte(`[{"number":1,"title":"Add feature","state":"open","html_url":"https://example.com/pr/1","updated_at":"2024-01-02T15:04:05Z","user":{"login":"alice"}}]`))
 	}))
-	defer ts.Close()
+	defer server.Close()
 
-	defaultBaseURL = ts.URL + "/"
-	defaultUploadURL = ts.URL + "/"
+	originalFactory := newGitHubClient
+	newGitHubClient = func(ctx context.Context, opts ...githubclient.ClientOption) (*githubclient.Client, error) {
+		opts = append(opts, githubclient.WithBaseURLs(server.URL, server.URL), githubclient.WithHTTPClient(server.Client()))
+		return githubclient.NewClient(ctx, opts...)
+	}
+	defer func() { newGitHubClient = originalFactory }()
 
 	e := echo.New()
 	RegisterRoutes(e, nil)
 
 	req := httptest.NewRequest(nethttp.MethodGet, "/metrics/prs?owner=owner&repo=repo", nil)
-	req.Header.Set("Authorization", "token "+token)
 	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
 
+	if rec.Code != nethttp.StatusUnauthorized {
+		t.Fatalf("expected unauthorized when token missing, got %d", rec.Code)
+	}
+
+	req = httptest.NewRequest(nethttp.MethodGet, "/metrics/prs?owner=owner&repo=repo", nil)
+	req.Header.Set("Authorization", "Bearer override-token")
+	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
 	if rec.Code != nethttp.StatusOK {
-		t.Fatalf("unexpected status: %d body=%s", rec.Code, rec.Body.String())
+		t.Fatalf("expected success, got %d with body %s", rec.Code, rec.Body.String())
 	}
 
-	var payload []githubclient.PRStatus
-	if err := json.NewDecoder(rec.Body).Decode(&payload); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-
-	if len(payload) != 1 {
-		t.Fatalf("unexpected payload length: %d", len(payload))
-	}
-
-	if payload[0].Author != "octocat" {
-		t.Fatalf("unexpected author: %s", payload[0].Author)
-	}
-
-	mu.Lock()
-	path := observedPath
-	auth := observedAuth
-	mu.Unlock()
-
-	if path != "/repos/owner/repo/pulls" {
-		t.Fatalf("unexpected path: %s", path)
-	}
-
-	if auth != "Bearer "+token {
-		t.Fatalf("unexpected authorization header: %q", auth)
+	if body := rec.Body.String(); !strings.Contains(body, "Add feature") {
+		t.Fatalf("unexpected body: %s", body)
 	}
 }

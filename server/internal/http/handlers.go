@@ -13,10 +13,7 @@ import (
 	"cappycoding/server/internal/githubclient"
 )
 
-var (
-	defaultBaseURL   string
-	defaultUploadURL string
-)
+var newGitHubClient = githubclient.NewClient
 
 // RegisterRoutes wires the metrics endpoints on the provided Echo instance.
 func RegisterRoutes(e *echo.Echo, client *githubclient.Client) {
@@ -140,11 +137,7 @@ func resolveClient(ctx context.Context, base *githubclient.Client, token string)
 		if token == "" {
 			return nil, githubclient.ErrMissingToken
 		}
-		opts := []githubclient.ClientOption{githubclient.WithToken(token)}
-		if defaultBaseURL != "" || defaultUploadURL != "" {
-			opts = append(opts, githubclient.WithBaseURLs(defaultBaseURL, defaultUploadURL))
-		}
-		return githubclient.NewClient(ctx, opts...)
+		return newGitHubClient(ctx, githubclient.WithToken(token))
 	}
 
 	return base.CloneWithToken(ctx, token)

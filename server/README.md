@@ -4,17 +4,20 @@ This Go service exposes GitHub metrics for the CappyCoding mascot.
 
 ## Prerequisites
 - Go 1.21+
-- (Optional) A GitHub personal access token with `repo` and `workflow` scopes. The backend discovers it from the
-  `GITHUB_TOKEN` environment variable, the Tauri config file (`com.sluggish-solutions.capycoding/config.json`), or an
-  override supplied by the frontend per request (see [Authenticating requests](#authenticating-requests)).
+- (Optional) A GitHub personal access token with `repo` and `workflow` scopes. The backend discovers it from the `GITHUB_TOKEN`
+  environment variable, the Tauri config file (`com.sluggish-solutions.capycoding/config.json`), or an override supplied
+  by the frontend per request (see [Authenticating requests](#authenticating-requests)). If no default token is configured,
+  the server still starts but every request must include credentials.
 
 ## Running the server
 ```bash
 cd server
-GITHUB_TOKEN=your_token go run ./...
+go run ./...
 ```
 
-By default the API listens on `:8080`. Override with the `CAPYCODING_SERVER_ADDR` environment variable.
+Set `GITHUB_TOKEN=your_token` (or configure the Tauri file) when you want the backend to use a shared credential. Without it the
+API still boots, but you must forward a token per request. By default the API listens on `:8080`. Override with the
+`CAPYCODING_SERVER_ADDR` environment variable.
 
 ## Available endpoints
 - `GET /metrics/prs` – Latest pull requests.
@@ -35,5 +38,3 @@ request may include either of the following headers:
 - `X-GitHub-Token: <token>`
 
 If no override header is present, the server falls back to the token discovered from the environment or Tauri config file.
-When neither source provides credentials the server still starts, but callers must always supply a token via the headers
-above.
