@@ -23,7 +23,13 @@ func main() {
 
 	client, err := githubclient.NewClient(ctx)
 	if err != nil {
-		log.Fatalf("failed to create github client: %v", err)
+		if errors.Is(err, githubclient.ErrMissingToken) {
+			log.Printf("github token not configured: %v", err)
+			log.Printf("requests must include Authorization or X-GitHub-Token headers; continuing without default credentials")
+			client = nil
+		} else {
+			log.Fatalf("failed to create github client: %v", err)
+		}
 	}
 
 	e := echov4.New()
