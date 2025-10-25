@@ -1,9 +1,11 @@
 use alloc::boxed::Box;
 use display_interface_spi::SPIInterface;
+use embassy_time::Timer;
 use embedded_hal_bus::spi::ExclusiveDevice;
+use log::info;
 use weact_studio_epd::{
     WeActStudio290BlackWhiteDriver,
-    graphics::{Display, DisplayRotation},
+    graphics::{Display, Display290BlackWhite, DisplayRotation},
 };
 
 use mousefood::{EmbeddedBackend, EmbeddedBackendConfig, fonts};
@@ -16,6 +18,8 @@ use esp_hal::{
     peripherals::{GPIO0, GPIO1, GPIO2, GPIO3},
     spi::master::Spi,
 };
+
+use crate::widgets::root_draw;
 pub extern crate alloc;
 
 pub type CapyDisplay = Display<128, 296, 4736, weact_studio_epd::Color>;
@@ -63,4 +67,16 @@ pub fn setup_weact_term<'a>(
     let backend = EmbeddedBackend::new(display, config);
 
     Terminal::new(backend).unwrap()
+}
+
+/// render task for capycode
+#[embassy_executor::task]
+pub async fn ui_task(spi: Spi<'static, Blocking>, term_init_pins: WeactTermInitPins) {
+    info!("UI task started!");
+    let mut display = Display290BlackWhite::new();
+    let mut term = setup_weact_term(spi, &mut display, term_init_pins);
+    loop {
+        term.draw(|f| root_draw(f)).unwrap();
+        Timer::after_millis(5).await;
+    }
 }
