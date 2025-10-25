@@ -1,0 +1,17 @@
+pre-commit:
+  parallel: true
+  commands:
+    biome_fix:
+      glob: "**/*.{js,jsx,ts,tsx,json,css,scss,md,html}"
+      # root: capycoding-app
+      exclude:
+        # - "capycoding-esp/*"
+      run: cd capycoding-app && bunx biome check --write {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: true
+  commands:
+    # api_tests:
+    #   if: git diff --cached --name-only | rg '\.py$'
+    #   run: just test_api

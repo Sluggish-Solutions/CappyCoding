@@ -1,0 +1,31 @@
+# set working-directory := 'capycoding-app'
+
+# DEFAULT
+list:
+    just --list
+
+[no-cd]
+edit:
+    hx justfile
+
+# DEV
+dev:
+    bun run dev
+
+# CHECK
+check:
+    bunx @biomejs/biome check --write .
+    bunx dprint fmt "**/*.{svelte,astro}"
+    bunx sv check
+
+# Setup
+sv_setup NAME="svelte-project":
+    bunx sv add -C {{ NAME }} devtools-json mcp sveltekit-adapter tailwindcss playwright
+    cd {{ NAME }} && bun add -D typescript-svelte-plugin @types/node @biomejs/biome phosphor-svelte && bun add runed neverthrow
+
+shadcn_base:
+    bunx sv add tailwindcss
+    bun x shadcn-svelte@latest init
+
+shadcn_all: shadcn_base
+    bunx shadcn-svelte@latest add -aoy
