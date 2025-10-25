@@ -4,6 +4,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Wrap},
 };
 
+/// The root of the widget tree that draws everything else;
 pub fn root_draw(frame: &mut Frame) {
     let text = "Ratatui on embedded devices! ";
     let paragraph = Paragraph::new(text.dark_gray()).wrap(Wrap { trim: true });

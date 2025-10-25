@@ -84,6 +84,7 @@ async fn main(spawner: Spawner) -> () {
 }
 
 #[embassy_executor::task]
+/// render task for capycode
 async fn render(spi: Spi<'static, Blocking>, term_init_pins: WeactTermInitPins) {
     info!("Render Task Initiated!");
     let mut display = Display290BlackWhite::new();

@@ -24,6 +24,7 @@ pub type CapyTerm<'a> = Terminal<
     EmbeddedBackend<'a, Display<128, 296, 4736, weact_studio_epd::Color>, weact_studio_epd::Color>,
 >;
 
+/// pin configuration for weact term
 pub struct WeactTermInitPins {
     pub cs_pin: GPIO3<'static>,
     pub dc_pin: GPIO2<'static>,
@@ -31,6 +32,7 @@ pub struct WeactTermInitPins {
     pub busy_pin: GPIO0<'static>,
 }
 
+/// Initializes the weact terminal
 pub fn setup_weact_term<'a>(
     spi: Spi<'static, Blocking>,
     display: &'a mut CapyDisplay,
@@ -60,7 +62,5 @@ pub fn setup_weact_term<'a>(
 
     let backend = EmbeddedBackend::new(display, config);
 
-    let term = Terminal::new(backend).unwrap();
-
-    term
+    Terminal::new(backend).unwrap()
 }
