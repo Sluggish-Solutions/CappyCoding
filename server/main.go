@@ -67,8 +67,9 @@ func main() {
 }
 
 func addr() string {
-	if value := os.Getenv("PORT"); value != "" {
-		return value
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
-	return ":8080"
+	return ":" + port
 }
