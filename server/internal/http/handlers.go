@@ -23,13 +23,13 @@ func RegisterRoutes(e *echo.Echo, client *githubclient.Client) {
 			return respondError(c, err)
 		}
 
-		repo := githubclient.Repository{Owner: c.QueryParam("owner"), Name: c.QueryParam("repo")}
+		user := c.QueryParam("user")
 		opts := githubclient.PullRequestOptions{
 			State:   c.QueryParam("state"),
 			PerPage: queryParamInt(c, "per_page", 20),
 		}
 
-		prs, err := resolvedClient.PullRequestStatuses(c.Request().Context(), repo, opts)
+		prs, err := resolvedClient.UserPullRequestStatuses(c.Request().Context(), user, opts)
 		if err != nil {
 			return respondError(c, err)
 		}
@@ -43,13 +43,13 @@ func RegisterRoutes(e *echo.Echo, client *githubclient.Client) {
 			return respondError(c, err)
 		}
 
-		repo := githubclient.Repository{Owner: c.QueryParam("owner"), Name: c.QueryParam("repo")}
+		user := c.QueryParam("user")
 		opts := githubclient.WorkflowOptions{
 			Branch:  c.QueryParam("branch"),
 			PerPage: queryParamInt(c, "per_page", 20),
 		}
 
-		runs, err := resolvedClient.WorkflowRuns(c.Request().Context(), repo, opts)
+		runs, err := resolvedClient.UserWorkflowRuns(c.Request().Context(), user, opts)
 		if err != nil {
 			return respondError(c, err)
 		}
@@ -63,7 +63,7 @@ func RegisterRoutes(e *echo.Echo, client *githubclient.Client) {
 			return respondError(c, err)
 		}
 
-		repo := githubclient.Repository{Owner: c.QueryParam("owner"), Name: c.QueryParam("repo")}
+		user := c.QueryParam("user")
 		since, err := parseTime(c.QueryParam("since"))
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -73,7 +73,7 @@ func RegisterRoutes(e *echo.Echo, client *githubclient.Client) {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
 
-		metrics, err := resolvedClient.CommitCount(c.Request().Context(), repo, githubclient.CommitOptions{Since: since, Until: until})
+		metrics, err := resolvedClient.UserCommitCount(c.Request().Context(), user, githubclient.CommitOptions{Since: since, Until: until})
 		if err != nil {
 			return respondError(c, err)
 		}
@@ -106,6 +106,8 @@ func parseTime(raw string) (*time.Time, error) {
 func respondError(c echo.Context, err error) error {
 	status := http.StatusInternalServerError
 	if errors.Is(err, githubclient.ErrInvalidRepository) {
+		status = http.StatusBadRequest
+	} else if errors.Is(err, githubclient.ErrInvalidUser) {
 		status = http.StatusBadRequest
 	} else if errors.Is(err, githubclient.ErrMissingToken) {
 		status = http.StatusUnauthorized

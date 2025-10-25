@@ -67,7 +67,7 @@ func main() {
 }
 
 func addr() string {
-	if value := os.Getenv("CAPYCODING_SERVER_ADDR"); value != "" {
+	if value := os.Getenv("PORT"); value != "" {
 		return value
 	}
 	return ":8080"
