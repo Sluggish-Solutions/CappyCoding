@@ -4,9 +4,9 @@ This Go service exposes GitHub metrics for the CappyCoding mascot.
 
 ## Prerequisites
 - Go 1.21+
-- A GitHub personal access token with `repo` and `workflow` scopes. The backend discovers it from the `GITHUB_TOKEN`
-  environment variable, the Tauri config file (`com.sluggish-solutions.capycoding/config.json`), or an override supplied
-  by the frontend per request (see [Authenticating requests](#authenticating-requests)).
+- (Optional) A GitHub personal access token with `repo` and `workflow` scopes. The backend discovers it from the
+  `GITHUB_TOKEN` environment variable, the Tauri config file (`com.sluggish-solutions.capycoding/config.json`), or an
+  override supplied by the frontend per request (see [Authenticating requests](#authenticating-requests)).
 
 ## Running the server
 ```bash
@@ -35,3 +35,5 @@ request may include either of the following headers:
 - `X-GitHub-Token: <token>`
 
 If no override header is present, the server falls back to the token discovered from the environment or Tauri config file.
+When neither source provides credentials the server still starts, but callers must always supply a token via the headers
+above.
