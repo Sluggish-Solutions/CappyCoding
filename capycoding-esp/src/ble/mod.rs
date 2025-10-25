@@ -4,23 +4,22 @@ use esp_radio::{Controller, ble::controller::BleConnector};
 use log::info;
 use trouble_host::{HostResources, prelude::DefaultPacketPool};
 
+#[allow(unused_imports)]
 use trouble_host::prelude::*;
+
+use crate::CapyConfigHandle;
 
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 1;
 
 type CapyResources = HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX>;
 
-struct Server {
-    ping_service: PingService,
-}
-
-struct PingService {
-    
-}
-
 #[embassy_executor::task]
-pub async fn ble_task(radio: &'static Controller<'static>, bt: peripherals::BT<'static>) {
+pub async fn ble_task(
+    radio: &'static Controller<'static>,
+    bt: peripherals::BT<'static>,
+    config_handle: CapyConfigHandle,
+) {
     info!("BLE task started!");
     let transport = BleConnector::new(radio, bt, Default::default()).unwrap();
     let ble_controller: ExternalController<BleConnector<'_>, 20> =
