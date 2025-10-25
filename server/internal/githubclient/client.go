@@ -104,6 +104,26 @@ func NewFromGitHubClient(api *github.Client) *Client {
 	return &Client{api: api}
 }
 
+// CloneWithToken returns the current client when no override token is provided.
+// When an override token is supplied it creates a new client instance that
+// reuses the existing base and upload URLs but authenticates with the
+// provided token.
+func (c *Client) CloneWithToken(ctx context.Context, token string) (*Client, error) {
+	if token == "" {
+		return c, nil
+	}
+
+	var baseURL, uploadURL string
+	if c.api.BaseURL != nil {
+		baseURL = c.api.BaseURL.String()
+	}
+	if c.api.UploadURL != nil {
+		uploadURL = c.api.UploadURL.String()
+	}
+
+	return NewClient(ctx, WithToken(token), WithBaseURLs(baseURL, uploadURL))
+}
+
 func setBaseURL(api *github.Client, raw string) error {
 	parsed, err := parseURLWithTrailingSlash(raw)
 	if err != nil {
