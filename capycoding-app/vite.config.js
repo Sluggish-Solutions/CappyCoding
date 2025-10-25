@@ -1,14 +1,15 @@
 import path from 'node:path'
+import process from 'node:process'
 import { sveltekit } from '@sveltejs/kit/vite'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
+import devtoolsJson from 'vite-plugin-devtools-json'
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-	plugins: [tailwindcss(), sveltekit()],
+	plugins: [tailwindcss(), sveltekit(), devtoolsJson()],
 	// Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
 	//
 	// 1. prevent Vite from obscuring rust errors
@@ -19,10 +20,8 @@ export default defineConfig(async () => ({
 		strictPort: true,
 		host: host || false,
 		hmr: host ? { protocol: 'ws', host, port: 1421 } : undefined,
-		watch: {
-			// 3. tell Vite to ignore watching `src-tauri`
-			ignored: ['**/src-tauri/**'],
-		},
+		// 3. tell Vite to ignore watching `src-tauri`
+		watch: { ignored: ['**/src-tauri/**'] },
 	},
 	resolve: { alias: { $lib: path.resolve('./src/lib') } },
 }))
