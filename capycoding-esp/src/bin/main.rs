@@ -7,11 +7,13 @@
 )]
 
 use bt_hci::controller::ExternalController;
-use capycoding_esp::alloc::fmt::format;
+use capycoding_esp::{CapyTerm, WeactTermInitPins, alloc::fmt::format};
 use embassy_executor::Spawner;
 use esp_backtrace as _;
 use esp_hal::{
+    Blocking,
     clock::CpuClock,
+    peripherals::GPIO3,
     spi::{self, master::Spi},
     time::Rate,
     timer::timg::TimerGroup,
@@ -34,7 +36,7 @@ const L2CAP_CHANNELS_MAX: usize = 1;
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[esp_rtos::main]
-async fn main(spawner: Spawner) -> ! {
+async fn main(spawner: Spawner) -> () {
     // generator version: 0.6.0
 
     esp_println::logger::init_logger_from_env();
@@ -68,10 +70,8 @@ async fn main(spawner: Spawner) -> ! {
         HostResources::new();
     let _stack = trouble_host::new(ble_controller, &mut resources);
 
-    // TODO: Spawn some tasks
-    let _ = spawner;
-
-    let mut display = Display290BlackWhite::new();
+    // // TODO: Spawn some tasks
+    // let _ = spawner;
 
     let mosi_pin = peripherals.GPIO5;
     let sclk_pin = peripherals.GPIO4;
@@ -86,36 +86,44 @@ async fn main(spawner: Spawner) -> ! {
     .with_sck(sclk_pin)
     .with_mosi(mosi_pin);
 
-    // let mut terminal = capycoding_esp::setup_terminal(peripherals, &mut display);
-    let mut terminal = capycoding_esp::setup_weact_term(
-        spi_bus,
-        &mut display,
-        peripherals.GPIO3,
-        peripherals.GPIO2,
-        peripherals.GPIO1,
-        peripherals.GPIO0,
-    );
+    let term_init_pins = WeactTermInitPins {
+        cs_pin: peripherals.GPIO3,
+        dc_pin: peripherals.GPIO2,
+        rst_pin: peripherals.GPIO1,
+        busy_pin: peripherals.GPIO0,
+    };
 
-    info!("Terminal initialized!");
+    spawner.spawn(render(spi_bus, term_init_pins)).unwrap();
 
     // Run an infinite loop, where widgets will be rendered
-    let mut i = 0;
-    loop {
-        terminal
-            .draw(|f| {
-                draw(f, &mut i)
-                // f.render_widget(draw(), area);
-            })
-            .unwrap();
-
-        i += 1;
-    }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.1/examples/src/bin
 }
 
+// async fn render(mut term: CapyTerm<'static>, spi: Spi<'static, Blocking>) {
 #[embassy_executor::task]
-async fn render() {}
+async fn render(spi: Spi<'static, Blocking>, term_init_pins: WeactTermInitPins) {
+    info!("we are render");
+    let mut display = Display290BlackWhite::new();
+    let mut term = capycoding_esp::setup_weact_term(
+        spi,
+        &mut display,
+        term_init_pins.cs_pin,
+        term_init_pins.dc_pin,
+        term_init_pins.rst_pin,
+        term_init_pins.busy_pin,
+    );
+    let mut i = 0;
+    loop {
+        term.draw(|f| {
+            draw(f, &mut i)
+            // f.render_widget(draw(), area);
+        })
+        .unwrap();
+
+        i += 1;
+    }
+}
 
 fn draw(frame: &mut Frame, i: &mut i32) {
     let text = format(format_args!("Ratatui on embedded devices! {i}"));
@@ -125,47 +133,3 @@ fn draw(frame: &mut Frame, i: &mut i32) {
         .title("Mousefood");
     frame.render_widget(paragraph.block(bordered_block), frame.area());
 }
-
-// fn setup_terminal(peripherals: &mut Peripherals) -> Terminal<EmbeddedBackend<'_>> {
-//     let mosi_pin = peripherals.GPIO5;
-//     let sclk_pin = peripherals.GPIO4;
-//     let cs_pin = peripherals.GPIO3;
-//     let dc_pin = peripherals.GPIO2;
-//     let rst_pin = peripherals.GPIO1;
-//     let busy_pin = peripherals.GPIO0;
-
-//     let cs = Output::new(cs_pin, Level::High, OutputConfig::default());
-//     let busy = Input::new(busy_pin, InputConfig::default().with_pull(Pull::Up));
-//     let dc = Output::new(dc_pin, Level::Low, OutputConfig::default());
-//     let rst = Output::new(rst_pin, Level::High, OutputConfig::default());
-//     let delay = Delay::new();
-
-//     let spi_bus = Spi::new(
-//         peripherals.SPI2,
-//         spi::master::Config::default()
-//             .with_frequency(Rate::from_khz(100))
-//             .with_mode(spi::Mode::_0),
-//     )
-//     .unwrap()
-//     .with_sck(sclk_pin)
-//     .with_mosi(mosi_pin);
-
-//     let spi_device = ExclusiveDevice::new(spi_bus, cs, delay.clone()).unwrap();
-//     let spi_interface = SPIInterface::new(spi_device, dc);
-
-//     let mut driver = WeActStudio290BlackWhiteDriver::new(spi_interface, busy, rst, delay.clone());
-//     let mut display = Display290BlackWhite::new();
-//     display.set_rotation(DisplayRotation::Rotate90);
-//     driver.init().unwrap();
-
-//     let config = EmbeddedBackendConfig {
-//         font_regular: fonts::MONO_10X20,
-//         flush_callback: Box::new(move |d| {
-//             driver.fast_update(d).unwrap();
-//         }),
-//         ..Default::default()
-//     };
-
-//     let backend = EmbeddedBackend::new(&mut display, config);
-//     Terminal::new(backend).unwrap()
-// }

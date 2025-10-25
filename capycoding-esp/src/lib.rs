@@ -15,6 +15,7 @@ use esp_hal::{
     Blocking,
     delay::Delay,
     gpio::{self, Input, InputConfig, Level, Output, OutputConfig, Pull},
+    peripherals::{GPIO0, GPIO1, GPIO2, GPIO3},
     spi::master::Spi,
 };
 pub extern crate alloc;
@@ -24,6 +25,13 @@ pub type CapyDisplay = Display<128, 296, 4736, weact_studio_epd::Color>;
 pub type CapyTerm<'a> = Terminal<
     EmbeddedBackend<'a, Display<128, 296, 4736, weact_studio_epd::Color>, weact_studio_epd::Color>,
 >;
+
+pub struct WeactTermInitPins {
+    pub cs_pin: GPIO3<'static>,
+    pub dc_pin: GPIO2<'static>,
+    pub rst_pin: GPIO1<'static>,
+    pub busy_pin: GPIO0<'static>,
+}
 
 pub fn setup_weact_term<'a, CS, DC, RST, BUSY>(
     spi: Spi<'static, Blocking>,
