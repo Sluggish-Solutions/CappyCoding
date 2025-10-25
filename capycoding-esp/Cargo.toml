@@ -75,6 +75,24 @@ critical-section = "1.2.0"
 static_cell      = "2.1.1"
 
 
+
+display-interface-spi = "0.5.0"
+embedded-graphics = "0.8.1"
+embedded-hal-bus = "0.2.0"
+ 
+profont = "0.7.0"
+weact-studio-epd = { version = "0.1.2", features = ["blocking"] }
+heapless = "0.9.1"
+
+# mousefood = { git = "https://github.com/j-g00da/mousefood", rev = "1028ac24f83920fd95a5585a85ef943901ee63ac", features = ["epd-weact" ]}
+mousefood = { git = "https://github.com/suri-codes/mousefood.git", branch = "main", features = ["epd-weact", "portable-atomic", "framebuffer"]}
+ratatui = { git  = "https://github.com/suri-codes/ratatui.git", branch = "main", default-features = false}
+
+
+[patch.crates-io]
+ratatui = { git = "https://github.com/suri-codes/ratatui.git", branch = "main" }
+ratatui-core = { git = "https://github.com/suri-codes/ratatui.git", branch = "main" }
+
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization
