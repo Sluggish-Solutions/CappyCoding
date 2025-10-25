@@ -10,7 +10,7 @@ edit:
 
 # DEV
 dev:
-    bun run dev
+    bun tauri dev
 
 # CHECK
 check:
