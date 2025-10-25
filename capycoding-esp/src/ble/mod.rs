@@ -7,8 +7,6 @@ use trouble_host::{HostResources, prelude::DefaultPacketPool};
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 1;
 
-type Type = HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX>;
-
 #[embassy_executor::task]
 pub async fn ble_task(radio: &'static Controller<'static>, bt: peripherals::BT<'static>) {
     info!("BLE task started!");
