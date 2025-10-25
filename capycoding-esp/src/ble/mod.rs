@@ -4,10 +4,20 @@ use esp_radio::{Controller, ble::controller::BleConnector};
 use log::info;
 use trouble_host::{HostResources, prelude::DefaultPacketPool};
 
+use trouble_host::prelude::*;
+
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 1;
 
 type CapyResources = HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX>;
+
+struct Server {
+    ping_service: PingService,
+}
+
+struct PingService {
+    
+}
 
 #[embassy_executor::task]
 pub async fn ble_task(radio: &'static Controller<'static>, bt: peripherals::BT<'static>) {
