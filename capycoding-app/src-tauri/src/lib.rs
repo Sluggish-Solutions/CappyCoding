@@ -1,16 +1,5 @@
 use crate::types::{Id, Info};
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-fn call_api() {
-    println!("I was invoked from JavaScript!");
-}
-
 #[taurpc::procedures(export_to = "../src/types.ts")]
 trait Api {
     async fn hello_world() -> String;
@@ -24,7 +13,7 @@ struct ApiImpl;
 #[taurpc::resolvers]
 impl Api for ApiImpl {
     async fn hello_world(self) -> String {
-        "Penis".to_owned()
+        "what".to_owned()
     }
 
     async fn get_user(self, id: Id) -> Info {
