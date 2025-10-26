@@ -7,26 +7,61 @@
 )]
 
 use capycoding_esp::ble::ble_task;
-use capycoding_esp::wifi::wifi_task;
-use capycoding_esp::{CapyState, WeactTermInitPins, ui_task};
+use capycoding_esp::wifi::{connection, net_task, wifi_task};
+use capycoding_esp::{CapyConfig, WeactTermInitPins, ui_task};
 use embassy_executor::Spawner;
-use embedded_storage::{ReadStorage, Storage};
-use esp_backtrace as _;
-use esp_bootloader_esp_idf::partitions;
+use embassy_net::dns::DnsSocket;
+use embassy_net::tcp::client::{self, TcpClient, TcpClientState};
+use embassy_net::{Config, DhcpConfig, Runner, Stack, StackResources};
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::pubsub::PubSubChannel;
+use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
+use esp_hal::rng::Rng;
 use esp_hal::spi::{self, master::Spi};
 use esp_hal::{time::Rate, timer::timg::TimerGroup};
+use esp_radio::wifi::{
+    self, ClientConfig, Config as WifiConfig, ModeConfig, ScanConfig, WifiController, WifiDevice,
+    WifiEvent, WifiStaState,
+};
 use esp_storage::FlashStorage;
 
+use esp_backtrace as _;
+
+use capycoding_esp::alloc::string::String;
 use log::info;
+use reqwless::client::{HttpClient, TlsConfig};
 use static_cell::StaticCell;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-static RADIO: StaticCell<esp_radio::Controller<'static>> = StaticCell::new();
+use embassy_sync::mutex::Mutex;
 
+const SSID: &str = "Surendra S21";
+const PASSWORD: &str = "Surendra2006";
+
+pub static CONFIG: StaticCell<Mutex<CriticalSectionRawMutex, Option<CapyConfig>>> =
+    StaticCell::new();
+
+static RADIO: StaticCell<esp_radio::Controller<'static>> = StaticCell::new();
+static PUB_SUB_CHANNEL: static_cell::StaticCell<PubSubChannel<NoopRawMutex, Message, 20, 3, 1>> =
+    static_cell::StaticCell::new();
+
+#[derive(Copy, Clone)]
+pub enum Message {
+    Connected,
+}
+
+macro_rules! mk_static {
+    ($t:ty,$val:expr) => {{
+        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
+        #[deny(unused_attributes)]
+        let x = STATIC_CELL.uninit().write(($val));
+        x
+    }};
+}
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> () {
     esp_println::logger::init_logger_from_env();
@@ -36,7 +71,7 @@ async fn main(spawner: Spawner) -> () {
 
     // shit ton of memory alloc
     esp_alloc::heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 66320);
-    esp_alloc::heap_allocator!(size: 200 * 1024);
+    esp_alloc::heap_allocator!(size: 170* 1024);
 
     // rtos init
     let timg0 = TimerGroup::new(peripherals.TIMG0);
@@ -73,80 +108,48 @@ async fn main(spawner: Spawner) -> () {
         busy_pin: peripherals.GPIO0,
     };
 
-    // spawn tasks
-    spawner.spawn(ble_task(radio, peripherals.BT)).unwrap();
-    spawner.spawn(wifi_task(radio, peripherals.WIFI)).unwrap();
-    spawner.spawn(ui_task(spi_bus, term_init_pins)).unwrap();
-
     let mut flash = FlashStorage::new(peripherals.FLASH);
 
-    let mut state = CapyState::load(&mut flash);
-    state.wifi_credentials.ssid = "lol".try_into().unwrap();
-    state.wifi_credentials.password = "lol123".try_into().unwrap();
-    state.api_tokens.github = "abcdefg".try_into().unwrap();
-    state.write(&mut flash);
+    let state = CapyConfig::load(&mut flash);
 
-    info!("State: {state:?}");
+    // spawn tasks
+    let capyconfig = CONFIG.init(Mutex::new(state));
 
-    // let mut pt_mem = [0u8; partitions::PARTITION_TABLE_MAX_LEN];
+    let capy_ref = &*capyconfig;
 
-    // let pt = partitions::read_partition_table(&mut flash, &mut pt_mem).unwrap();
+    let (wifi_controller, ifaces) =
+        esp_radio::wifi::new(radio, peripherals.WIFI, WifiConfig::default()).unwrap();
 
-    // for i in 0..pt.len() {
-    //     let raw = pt.get_partition(i).unwrap();
-    //     info!("pt i:{i}, value: {raw:?}");
-    // }
+    let wifi_interface = ifaces.sta;
 
-    // let nvs = pt
-    //     .find_partition(partitions::PartitionType::Data(
-    //         partitions::DataPartitionSubType::Nvs,
-    //     ))
-    //     .unwrap()
-    //     .unwrap();
+    let rng = Rng::new();
+    let net_seed = rng.random() as u64 | ((rng.random() as u64) << 32);
+    let tls_seed = rng.random() as u64 | ((rng.random() as u64) << 32);
 
-    // let mut nvs_partition = nvs.as_embedded_storage(&mut flash);
+    let dhcp_config = DhcpConfig::default();
+    let config = embassy_net::Config::dhcpv4(dhcp_config);
+    // Init network stack
+    let (stack, runner) = embassy_net::new(
+        wifi_interface,
+        config,
+        mk_static!(StackResources<3>, StackResources::<3>::new()),
+        net_seed,
+    );
 
-    // let mut bytes = [0u8; 32];
-    // info!("NVS partition size = {}", nvs_partition.capacity());
+    // BLE handler
+    spawner
+        .spawn(ble_task(radio, peripherals.BT, capy_ref))
+        .unwrap();
 
-    // let offset_in_nvs_partition = 0;
+    // UI handler
+    spawner
+        .spawn(ui_task(spi_bus, term_init_pins, capy_ref))
+        .unwrap();
 
-    // nvs_partition
-    //     .read(offset_in_nvs_partition, &mut bytes)
-    //     .unwrap();
-    // info!(
-    //     "Read from {:x}:  {:02x?}",
-    //     offset_in_nvs_partition,
-    //     &bytes[..32]
-    // );
+    // wifi util tasks
+    spawner.spawn(connection(wifi_controller)).unwrap();
+    spawner.spawn(net_task(runner)).unwrap();
 
-    // bytes[0x00] = bytes[0x00].wrapping_add(1);
-    // bytes[0x01] = bytes[0x01].wrapping_add(2);
-    // bytes[0x02] = bytes[0x02].wrapping_add(3);
-    // bytes[0x03] = bytes[0x03].wrapping_add(4);
-    // bytes[0x04] = bytes[0x04].wrapping_add(1);
-    // bytes[0x05] = bytes[0x05].wrapping_add(2);
-    // bytes[0x06] = bytes[0x06].wrapping_add(3);
-    // bytes[0x07] = bytes[0x07].wrapping_add(4);
-
-    // nvs_partition
-    //     .write(offset_in_nvs_partition, &bytes)
-    //     .unwrap();
-    // info!(
-    //     "Written to {:x}: {:02x?}",
-    //     offset_in_nvs_partition,
-    //     &bytes[..32]
-    // );
-
-    // let mut reread_bytes = [0u8; 32];
-    // nvs_partition.read(0, &mut reread_bytes).unwrap();
-    // info!(
-    //     "Read from {:x}:  {:02x?}",
-    //     offset_in_nvs_partition,
-    //     &reread_bytes[..32]
-    // );
-
-    // info!("Reset (CTRL-R in espflash) to re-read the persisted data.");
-
-    // loop {}
+    // main wifi task
+    spawner.spawn(wifi_task(stack, tls_seed)).unwrap();
 }
