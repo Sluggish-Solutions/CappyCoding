@@ -13,6 +13,7 @@ import (
 	echov4 "github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"cappycoding/server/internal/claude"
 	"cappycoding/server/internal/githubclient"
 	httpHandlers "cappycoding/server/internal/http"
 )
@@ -37,7 +38,9 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	httpHandlers.RegisterRoutes(e, client)
+	claudeStore := claude.NewStore(288)
+
+	httpHandlers.RegisterRoutes(e, client, claudeStore)
 
 	srv := &http.Server{
 		Addr:         addr(),
@@ -67,8 +70,9 @@ func main() {
 }
 
 func addr() string {
-	if value := os.Getenv("CAPYCODING_SERVER_ADDR"); value != "" {
-		return value
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
 	}
-	return ":8080"
+	return ":" + port
 }

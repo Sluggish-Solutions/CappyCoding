@@ -32,6 +32,7 @@ embassy-net = { version = "0.7.0", features = [
   "medium-ethernet",
   "tcp",
   "udp",
+  "dns"
 ] }
 embedded-io = "0.7.1"
 embedded-io-async = "0.7.0"
@@ -68,6 +69,9 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
   "socket-raw",
   "socket-tcp",
   "socket-udp",
+
+  
+"dns-max-server-count-4", 
 ] }
 trouble-host = { version = "0.5.0", features = ["gatt"] }
 
@@ -82,12 +86,25 @@ embedded-hal-bus = "0.2.0"
  
 profont = "0.7.0"
 weact-studio-epd = { version = "0.1.2", features = ["blocking"] }
-heapless = "0.9.1"
+heapless = { version = "0.9.1", features = ["serde"] }
 
 # mousefood = { git = "https://github.com/j-g00da/mousefood", rev = "1028ac24f83920fd95a5585a85ef943901ee63ac", features = ["epd-weact" ]}
 mousefood = { git = "https://github.com/suri-codes/mousefood.git", branch = "main", features = ["epd-weact", "portable-atomic", "framebuffer"]}
 ratatui = { git  = "https://github.com/suri-codes/ratatui.git", branch = "main", default-features = false}
+esp-storage = { version = "0.8.0", features = ["esp32c3"] }
+serde = {version = "1.0.228", default-features = false}
+postcard = "1.1.3"
+embedded-storage = "0.3.1"
+embassy-sync = "0.7.2"
 
+
+reqwless = { version = "0.13.0", default-features = false, features = [
+    "embedded-tls",
+] }
+
+embassy-futures = "0.1.2"
+
+ble-types = {path = "../ble-types"}
 
 [patch.crates-io]
 ratatui = { git = "https://github.com/suri-codes/ratatui.git", branch = "main" }
@@ -96,7 +113,8 @@ ratatui-core = { git = "https://github.com/suri-codes/ratatui.git", branch = "ma
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization
-opt-level = "s"
+# opt-level = "s"
+opt-level = 3
 
 [profile.release]
 codegen-units    = 1     # LLVM can perform better optimizations using a single thread
