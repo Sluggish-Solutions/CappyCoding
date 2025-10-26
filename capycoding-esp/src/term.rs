@@ -20,7 +20,6 @@ use esp_hal::{
 };
 
 use crate::{CapyConfigHandle, ui::root_draw};
-pub extern crate alloc;
 
 pub type CapyDisplay = Display<128, 296, 4736, weact_studio_epd::Color>;
 

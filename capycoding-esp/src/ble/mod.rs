@@ -1,3 +1,6 @@
+use ble_types::{PERIPHERAL_ADVERTISEMENT, PERIPHERAL_NAME};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::Timer;
 use esp_hal::peripherals;
 use esp_radio::Controller as RadioController;
@@ -61,14 +64,14 @@ pub async fn ble_task(
 
     info!("Starting advertising and GATT service");
     let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-        name: "TrouBLE",
+        name: PERIPHERAL_NAME,
         appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
     }))
     .unwrap();
 
     let _ = join(ble_co_task(runner), async {
         loop {
-            match advertise("Trouble Example", &mut peripheral, &server).await {
+            match advertise(PERIPHERAL_ADVERTISEMENT, &mut peripheral, &server).await {
                 Ok(conn) => {
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                     let a = gatt_events_task(&server, &conn);

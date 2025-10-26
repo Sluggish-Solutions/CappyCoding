@@ -10,3 +10,5 @@ pub mod ble;
 pub mod wifi;
 
 pub mod ui;
+
+pub extern crate alloc;

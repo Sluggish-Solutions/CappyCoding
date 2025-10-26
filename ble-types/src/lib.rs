@@ -11,6 +11,9 @@ pub const WIFI_SSID_CHARACTERISTIC: [u8; 2] = [0xbe, 0xed];
 pub const WIFI_PASSWORD_CHARACTERISTIC: [u8; 2] = [0xbe, 0xee];
 pub const GITHUB_TOKEN_CHARACTERISTIC: [u8; 2] = [0xbe, 0xea];
 
+pub const PERIPHERAL_NAME: &str = "CapyCoder";
+pub const PERIPHERAL_ADVERTISEMENT: &str = PERIPHERAL_NAME;
+
 // pub const WIFI_CREDENTIAL_CHARACTERISTIC: Uuid = uuid!("ab2f0d66-306f-4735-9af3-35930eeb31ca");
 pub const TOKENS_CHARACTERISTIC: Uuid = uuid!("361c1911-a3b1-4935-ae72-2ffc828099a1");
 
