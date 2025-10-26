@@ -14,7 +14,6 @@ const config = {
 		}),
 		alias: {
 			'@/*': './src/lib/*',
-			$tauri: './src/lib/tauri.ts',
 		},
 	},
 }

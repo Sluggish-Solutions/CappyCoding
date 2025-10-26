@@ -206,7 +206,13 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
             Err(_) => continue,
         };
 
-        let response = http_req.send(&mut buffer).await.unwrap();
+        let response = match http_req.send(&mut buffer).await {
+            Ok(o) => o,
+            Err(e) => {
+                error!("{e:#?}");
+                continue;
+            }
+        };
         info!("Got response");
         let res = response.body().read_to_end().await.unwrap();
 

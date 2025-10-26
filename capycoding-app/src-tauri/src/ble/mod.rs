@@ -1,7 +1,14 @@
 use anyhow::anyhow;
 use anyhow::Result;
+use ble_types::CONFIG_SERVICE_UUID;
+use ble_types::GITHUB_TOKEN_CHARACTERISTIC;
 use ble_types::PERIPHERAL_NAME;
+use ble_types::WIFI_PASSWORD_CHARACTERISTIC;
+use ble_types::WIFI_SSID_CHARACTERISTIC;
+use btleplug::api::bleuuid::uuid_from_u16;
+use btleplug::api::bleuuid::BleUuid;
 use log::info;
+use uuid::Uuid;
 
 use std::time::Duration;
 use tokio::time;
@@ -37,8 +44,66 @@ impl CapyCoder {
         Ok(perf.disconnect().await?)
     }
 
-    pub async fn send_config_data(&mut self) -> Result<()> {
-        todo!()
+    pub async fn send_config_data(
+        &mut self,
+        wifi_name: String,
+        wifi_pass: String,
+        github_token: String,
+    ) -> Result<()> {
+        let Some(ref capy) = self.peripheral else {
+            return Err(anyhow!("not connected to the thing"));
+        };
+
+        capy.discover_services().await?;
+        let services = capy.services();
+        let Some(target_service) = services
+            .iter()
+            .find(|e| e.uuid == uuid_from_u16(CONFIG_SERVICE_UUID))
+        else {
+            return Err(anyhow!("unable to find target service uuid"));
+        };
+        info!("target service: {target_service:#?}");
+
+        let target_characteristic = target_service
+            .characteristics
+            .iter()
+            .find(|e| e.uuid == uuid_from_u16(GITHUB_TOKEN_CHARACTERISTIC))
+            .ok_or(anyhow!("was not able to find characteristic uuid"))?;
+
+        capy.write(
+            target_characteristic,
+            github_token.as_bytes(),
+            btleplug::api::WriteType::WithoutResponse,
+        )
+        .await?;
+
+        let target_characteristic = target_service
+            .characteristics
+            .iter()
+            .find(|e| e.uuid == uuid_from_u16(WIFI_SSID_CHARACTERISTIC))
+            .ok_or(anyhow!("was not able to find characteristic uuid"))?;
+
+        capy.write(
+            target_characteristic,
+            wifi_name.as_bytes(),
+            btleplug::api::WriteType::WithoutResponse,
+        )
+        .await?;
+
+        let target_characteristic = target_service
+            .characteristics
+            .iter()
+            .find(|e| e.uuid == uuid_from_u16(WIFI_PASSWORD_CHARACTERISTIC))
+            .ok_or(anyhow!("was not able to find characteristic uuid"))?;
+
+        capy.write(
+            target_characteristic,
+            wifi_pass.as_bytes(),
+            btleplug::api::WriteType::WithoutResponse,
+        )
+        .await?;
+
+        Ok(())
     }
 }
 
@@ -68,5 +133,5 @@ async fn get_peripheral() -> Result<Peripheral> {
         }
     }
 
-    per.ok_or(anyhow!("couldnt find trouble!"))
+    per.ok_or(anyhow!("couldnt find capy!"))
 }

@@ -55,6 +55,31 @@ pub struct ClaudeQuestionResponse {
 }
 
 #[taurpc::ipc_type]
+pub struct ClaudeVoiceRequest {
+    pub api_key: String,
+    pub audio_base64: String,
+    pub audio_format: Option<String>,
+    pub transcript_hint: Option<String>,
+    pub code_context: Option<String>,
+    pub model: Option<String>,
+    pub max_output_tokens: Option<u32>,
+    pub temperature: Option<f32>,
+    pub system_prompt: Option<String>,
+    pub voice: Option<String>,
+}
+
+#[taurpc::ipc_type]
+pub struct ClaudeVoiceResponse {
+    pub answer_text: String,
+    pub answer_audio_base64: Option<String>,
+    pub answer_audio_mime_type: Option<String>,
+    pub transcript: Option<String>,
+    pub model: String,
+    pub stop_reason: Option<String>,
+    pub usage: Option<ClaudeUsage>,
+}
+
+#[taurpc::ipc_type]
 pub struct LivekitTokenRequest {
     pub api_key: String,
     pub api_secret: String,
@@ -72,37 +97,4 @@ pub struct LivekitTokenRequest {
 pub struct LivekitTokenResponse {
     pub token: String,
     pub expires_at: String,
-}
-
-#[taurpc::ipc_type]
-pub struct ClaudeVoicePromptRequest {
-    pub api_key: String,
-    pub agent_url: String,
-    pub audio_base64: String,
-    pub mime_type: String,
-    pub agent_id: Option<String>,
-    pub response_voice: Option<String>,
-    pub session_id: Option<String>,
-}
-
-#[taurpc::ipc_type]
-pub struct ClaudeVoicePromptResponse {
-    pub transcript: String,
-    pub reply_text: String,
-    pub reply_audio_base64: Option<String>,
-    pub reply_audio_mime_type: Option<String>,
-    pub session_id: Option<String>,
-}
-
-#[taurpc::ipc_type]
-pub struct LivekitVoiceBridgeRequest {
-    pub api_key: String,
-    pub agent_url: String,
-    pub audio_base64: String,
-    pub mime_type: String,
-    pub agent_id: Option<String>,
-    pub response_voice: Option<String>,
-    pub session_id: Option<String>,
-    pub room_name: Option<String>,
-    pub participant_identity: Option<String>,
 }

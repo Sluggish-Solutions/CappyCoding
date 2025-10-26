@@ -40,5 +40,6 @@ ble-types= {path="../../ble-types"}
 anyhow = "1.0.100"
 btleplug = "0.11.8"
 log = "0.4.28"
+uuid = "1.18.1"
 
 

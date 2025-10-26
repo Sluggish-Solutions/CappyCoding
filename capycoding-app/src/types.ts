@@ -14,26 +14,23 @@ export type ClaudeQuestionResponse = { answer: string; model: string; stop_reaso
 
 export type ClaudeUsage = { input_tokens: number; output_tokens: number }
 
-export type ClaudeVoicePromptRequest = { api_key: string; agent_url: string; audio_base64: string; mime_type: string; agent_id: string | null; response_voice: string | null; session_id: string | null }
+export type ClaudeVoiceRequest = { api_key: string; audio_base64: string; audio_format: string | null; transcript_hint: string | null; code_context: string | null; model: string | null; max_output_tokens: number | null; temperature: number | null; system_prompt: string | null; voice: string | null }
 
-export type ClaudeVoicePromptResponse = { transcript: string; reply_text: string; reply_audio_base64: string | null; reply_audio_mime_type: string | null; session_id: string | null }
+export type ClaudeVoiceResponse = { answer_text: string; answer_audio_base64: string | null; answer_audio_mime_type: string | null; transcript: string | null; model: string; stop_reason: string | null; usage: ClaudeUsage | null }
 
 export type LivekitTokenRequest = { api_key: string; api_secret: string; identity: string; room: string; name: string | null; metadata: string | null; ttl_seconds: number | null; can_publish: boolean | null; can_subscribe: boolean | null; can_publish_data: boolean | null }
 
 export type LivekitTokenResponse = { token: string; expires_at: string }
 
-export type LivekitVoiceBridgeRequest = { api_key: string; agent_url: string; audio_base64: string; mime_type: string; agent_id: string | null; response_voice: string | null; session_id: string | null; room_name: string | null; participant_identity: string | null }
-
 export type PushClaudeMetricsRequest = { metrics: ClaudeMetricsSnapshot; server_url: string; auth_token: string | null }
 
-const ARGS_MAP = { '':'{"ask_claude":["request"],"bridge_livekit_voice":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"],"relay_claude_voice":["request"],"relay_livekit_audio":["request"]}' }
+const ARGS_MAP = { '':'{"ask_claude":["request"],"ask_claude_voice":["request"],"collect_claude_metrics":["request"],"connect_device":["github_token","github_user","wifi_name","wifi_pass"],"generate_livekit_token":["request"],"push_claude_metrics":["request"]}' }
 export type Router = { "": {ask_claude: (request: ClaudeQuestionRequest) => Promise<ClaudeQuestionResponse>, 
-bridge_livekit_voice: (request: LivekitVoiceBridgeRequest) => Promise<ClaudeVoicePromptResponse>, 
+ask_claude_voice: (request: ClaudeVoiceRequest) => Promise<ClaudeVoiceResponse>, 
 collect_claude_metrics: (request: ClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>, 
+connect_device: (githubToken: string, githubUser: string, wifiName: string, wifiPass: string) => Promise<null>, 
 generate_livekit_token: (request: LivekitTokenRequest) => Promise<LivekitTokenResponse>, 
-push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>, 
-relay_claude_voice: (request: ClaudeVoicePromptRequest) => Promise<ClaudeVoicePromptResponse>, 
-relay_livekit_audio: (request: LivekitVoiceBridgeRequest) => Promise<ClaudeVoicePromptResponse>} };
+push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>} };
 
 
 export const createTauRPCProxy = () => createProxy<Router>(ARGS_MAP)
