@@ -25,5 +25,5 @@ pub struct WifiCredentials {
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Tokens {
-    pub github: String<30>,
+    pub github: String<50>,
 }
