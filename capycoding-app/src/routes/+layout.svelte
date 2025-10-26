@@ -137,7 +137,7 @@
 					<NavigationMenu.Link>
 						{#snippet child()}
 							<a
-								href="/test"
+								href="/setup"
 								class={navigationMenuTriggerStyle()}
 							>Setup</a>
 						{/snippet}
