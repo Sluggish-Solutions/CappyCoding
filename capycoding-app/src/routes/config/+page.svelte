@@ -68,6 +68,18 @@
 				abbr: 'GH Growth',
 				desc: 'Stars gained and followers trend',
 				content: 'Followers: 30 · Stars: 20'
+			},
+			'github-actions': {
+				id: 'github-actions',
+				abbr: 'GH Actions',
+				desc: 'Workflow activity and automation health',
+				content: 'Runs: 12 · Failures: 1'
+			},
+			'custom-text': {
+				id: 'custom-text',
+				abbr: 'Custom',
+				desc: 'Custom notes or metrics you want to highlight',
+				content: 'Add something meaningful here'
 			}
 		},
 		pages: [
