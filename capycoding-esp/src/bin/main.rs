@@ -8,29 +8,20 @@
 
 use capycoding_esp::ble::ble_task;
 use capycoding_esp::wifi::{connection, net_task, wifi_task};
-use capycoding_esp::{CapyConfig, WeactTermInitPins, ui_task};
+use capycoding_esp::{CapyConfig, WeactTermInitPins, init_capy_config, ui_task};
 use embassy_executor::Spawner;
-use embassy_net::dns::DnsSocket;
-use embassy_net::tcp::client::{self, TcpClient, TcpClientState};
-use embassy_net::{Config, DhcpConfig, Runner, Stack, StackResources};
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
-use embassy_sync::pubsub::PubSubChannel;
-use embassy_time::{Duration, Timer};
+use embassy_net::{DhcpConfig, StackResources};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use esp_hal::clock::CpuClock;
 use esp_hal::rng::Rng;
 use esp_hal::spi::{self, master::Spi};
 use esp_hal::{time::Rate, timer::timg::TimerGroup};
-use esp_radio::wifi::{
-    self, ClientConfig, Config as WifiConfig, ModeConfig, ScanConfig, WifiController, WifiDevice,
-    WifiEvent, WifiStaState,
-};
+use esp_radio::wifi::Config as WifiConfig;
 use esp_storage::FlashStorage;
 
 use esp_backtrace as _;
 
-use capycoding_esp::alloc::string::String;
 use log::info;
-use reqwless::client::{HttpClient, TlsConfig};
 use static_cell::StaticCell;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
@@ -39,20 +30,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 use embassy_sync::mutex::Mutex;
 
-const SSID: &str = "Surendra S21";
-const PASSWORD: &str = "Surendra2006";
-
-pub static CONFIG: StaticCell<Mutex<CriticalSectionRawMutex, Option<CapyConfig>>> =
-    StaticCell::new();
-
 static RADIO: StaticCell<esp_radio::Controller<'static>> = StaticCell::new();
-static PUB_SUB_CHANNEL: static_cell::StaticCell<PubSubChannel<NoopRawMutex, Message, 20, 3, 1>> =
-    static_cell::StaticCell::new();
-
-#[derive(Copy, Clone)]
-pub enum Message {
-    Connected,
-}
 
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
@@ -110,12 +88,7 @@ async fn main(spawner: Spawner) -> () {
 
     let mut flash = FlashStorage::new(peripherals.FLASH);
 
-    let state = CapyConfig::load(&mut flash);
-
-    // spawn tasks
-    let capyconfig = CONFIG.init(Mutex::new(state));
-
-    let capy_ref = &*capyconfig;
+    init_capy_config(&mut flash);
 
     let (wifi_controller, ifaces) =
         esp_radio::wifi::new(radio, peripherals.WIFI, WifiConfig::default()).unwrap();
@@ -137,14 +110,10 @@ async fn main(spawner: Spawner) -> () {
     );
 
     // BLE handler
-    spawner
-        .spawn(ble_task(radio, peripherals.BT, capy_ref))
-        .unwrap();
+    spawner.spawn(ble_task(radio, peripherals.BT)).unwrap();
 
     // UI handler
-    spawner
-        .spawn(ui_task(spi_bus, term_init_pins, capy_ref))
-        .unwrap();
+    spawner.spawn(ui_task(spi_bus, term_init_pins)).unwrap();
 
     // wifi util tasks
     spawner.spawn(connection(wifi_controller)).unwrap();

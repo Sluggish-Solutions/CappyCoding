@@ -6,10 +6,10 @@ use uuid::{Uuid, uuid};
 
 // pub const CONFIG_SERVICE_UUID: Uuid = uuid!("171f7d49-bd79-4e85-9bbd-9e0c57191e56");
 // pub const CONFIG_SERVICE_UUID_STR: &str = "171f7d49-bd79-4e85-9bbd-9e0c57191e56";
-pub const CONFIG_SERVICE_UUID: [u8; 2] = [0xbe, 0xef];
-pub const WIFI_SSID_CHARACTERISTIC: [u8; 2] = [0xbe, 0xed];
-pub const WIFI_PASSWORD_CHARACTERISTIC: [u8; 2] = [0xbe, 0xee];
-pub const GITHUB_TOKEN_CHARACTERISTIC: [u8; 2] = [0xbe, 0xea];
+pub const CONFIG_SERVICE_UUID: u16 = 0xbeef;
+pub const WIFI_SSID_CHARACTERISTIC: u16 = 0xbeed;
+pub const WIFI_PASSWORD_CHARACTERISTIC: u16 = 0xbeee;
+pub const GITHUB_TOKEN_CHARACTERISTIC: u16 = 0xbeea;
 
 pub const PERIPHERAL_NAME: &str = "CapyCoder";
 pub const PERIPHERAL_ADVERTISEMENT: &str = PERIPHERAL_NAME;

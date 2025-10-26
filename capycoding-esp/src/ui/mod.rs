@@ -1,3 +1,4 @@
+use alloc::{borrow::ToOwned, fmt::format};
 use ratatui::{
     Frame,
     style::{Style, Stylize},
@@ -16,10 +17,16 @@ pub fn root_draw(
         Option<crate::CapyConfig>,
     >,
 ) {
-    let text = if config.is_none() {
-        "Please connect to me!"
+    let text = if let Some(ref config) = *config {
+        format(format_args!(
+            "github_token: {:#?}",
+            config.api_tokens.github
+        ))
+
+        // format_args!("wifi_creds{:#?}")config.wifi_credentials
+        // "Please connect to me!"
     } else {
-        "CONFIG present!"
+        "CONFIG present!".to_owned()
     };
 
     let paragraph = Paragraph::new(text.dark_gray()).wrap(Wrap { trim: true });

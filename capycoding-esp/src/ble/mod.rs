@@ -1,6 +1,4 @@
 use ble_types::{PERIPHERAL_ADVERTISEMENT, PERIPHERAL_NAME};
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::Timer;
 use esp_hal::peripherals;
 use esp_radio::Controller as RadioController;
@@ -13,7 +11,7 @@ use embassy_futures::select::select;
 #[allow(unused_imports)]
 use trouble_host::prelude::*;
 
-use crate::CapyConfigHandle;
+use crate::{CapyConfig, CapyConfigHandle, get_capy_config};
 
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 1;
@@ -26,23 +24,17 @@ struct Server {
 #[gatt_service(uuid = ble_types::CONFIG_SERVICE_UUID)]
 struct ConfigService {
     #[characteristic(uuid = ble_types::WIFI_SSID_CHARACTERISTIC, write, read, notify)]
-    wifi_ssid: heapless::Vec<u8, 24>,
+    wifi_ssid: heapless::Vec<u8, 30>,
 
     #[characteristic(uuid = ble_types::WIFI_PASSWORD_CHARACTERISTIC, write, read, notify)]
-    wifi_password: heapless::Vec<u8, 24>,
+    wifi_password: heapless::Vec<u8, 30>,
 
     #[characteristic(uuid = ble_types::GITHUB_TOKEN_CHARACTERISTIC, write, read, notify)]
-    github_token: heapless::Vec<u8, 24>,
+    github_token: heapless::Vec<u8, 30>,
 }
 
-type CapyResources = HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX>;
-
 #[embassy_executor::task]
-pub async fn ble_task(
-    radio: &'static RadioController<'static>,
-    bt: peripherals::BT<'static>,
-    config_handle: CapyConfigHandle,
-) {
+pub async fn ble_task(radio: &'static RadioController<'static>, bt: peripherals::BT<'static>) {
     info!("BLE task started!");
     let transport = BleConnector::new(radio, bt, Default::default()).unwrap();
     let ble_controller: ExternalController<BleConnector<'_>, 20> =
@@ -131,18 +123,52 @@ async fn gatt_events_task<P: PacketPool>(
                                 "[gatt] Write Event to ssid Characteristic: {:?}",
                                 event.data()
                             );
+
+                            let x = heapless::Vec::from_slice(event.data()).unwrap();
+                            if HeaplessString::from_utf8(x.clone()).is_ok() {
+                                server.set(ssid, &x).unwrap();
+                            }
                         }
 
                         if event.handle() == passwd.handle {
+                            info!(
+                                "[gatt] Write Event to passwd Characteristic: {:?}",
+                                event.data()
+                            );
+
+                            let x = heapless::Vec::from_slice(event.data()).unwrap();
+                            if HeaplessString::from_utf8(x.clone()).is_ok() {
+                                server.set(passwd, &x).unwrap();
+                            }
+                        }
+                        if event.handle() == gh_token.handle {
                             info!(
                                 "[gatt] Write Event to gh_token Characteristic: {:?}",
                                 event.data()
                             );
 
                             let x = heapless::Vec::from_slice(event.data()).unwrap();
-
-                            server.set(passwd, &x).unwrap();
+                            if HeaplessString::from_utf8(x.clone()).is_ok() {
+                                server.set(gh_token, &x).unwrap();
+                            }
                         }
+
+                        let mut config = get_capy_config().lock().await;
+                        // let config = config.as_mut();
+
+                        let ssid = HeaplessString::from_utf8(server.get(ssid).unwrap()).unwrap();
+                        let passwd =
+                            HeaplessString::from_utf8(server.get(passwd).unwrap()).unwrap();
+                        let gh_token =
+                            HeaplessString::from_utf8(server.get(gh_token).unwrap()).unwrap();
+
+                        *config = Some(CapyConfig {
+                            api_tokens: ble_types::Tokens { github: gh_token },
+                            wifi_credentials: ble_types::WifiCredentials {
+                                ssid,
+                                password: passwd,
+                            },
+                        })
                     }
                     _ => {}
                 };
