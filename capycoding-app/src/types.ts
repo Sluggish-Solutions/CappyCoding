@@ -73,9 +73,27 @@ export type LivekitTokenResponse = {
         expires_at: string
 }
 
+export type ClaudeVoicePromptRequest = {
+        api_key: string
+        agent_url: string
+        audio_base64: string
+        mime_type: string
+        agent_id: string | null
+        response_voice: string | null
+        session_id: string | null
+}
+
+export type ClaudeVoicePromptResponse = {
+        transcript: string
+        reply_text: string
+        reply_audio_base64: string | null
+        reply_audio_mime_type: string | null
+        session_id: string | null
+}
+
 const ARGS_MAP = {
         '':
-                '{"ask_claude":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"]}',
+                '{"ask_claude":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"],"relay_claude_voice":["request"]}',
 }
 
 export type Router = {
@@ -84,6 +102,7 @@ export type Router = {
                 collect_claude_metrics: (request: ClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>
                 generate_livekit_token: (request: LivekitTokenRequest) => Promise<LivekitTokenResponse>
                 push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>
+                relay_claude_voice: (request: ClaudeVoicePromptRequest) => Promise<ClaudeVoicePromptResponse>
         }
 }
 
