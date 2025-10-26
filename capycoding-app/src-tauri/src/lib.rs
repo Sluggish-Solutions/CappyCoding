@@ -734,6 +734,8 @@ mod types;
 pub fn run() {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
+        .use_rustls_tls()  // Use rustls for better TLS compatibility
+        .https_only(false)  // Allow both HTTP and HTTPS
         .build()
         .expect("failed to build HTTP client");
 

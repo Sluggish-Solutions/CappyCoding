@@ -35,6 +35,7 @@
         const metricsLoading = writable(false)
         const metricsError = writable('')
         const nextSyncTime = writable<number | null>(null)
+        const currentTime = writable(Date.now())
 
         const voiceResponse = writable<ClaudeVoiceResponse | null>(null)
         const voiceError = writable('')
@@ -189,8 +190,9 @@
                 // Set next sync time to 1 minute from now
                 nextSyncTime.set(Date.now() + 60000)
 
-                // Update countdown every second
+                // Update current time every second for countdown display
                 countdownInterval = setInterval(() => {
+                        currentTime.set(Date.now())
                         const next = get(nextSyncTime)
                         if (next !== null && next <= Date.now()) {
                                 nextSyncTime.set(Date.now() + 60000)
@@ -219,9 +221,9 @@
                 nextSyncTime.set(null)
         }
 
-        function formatTimeUntilSync(timestamp: number | null): string {
+        function formatTimeUntilSync(timestamp: number | null, now: number): string {
                 if (timestamp === null) return ''
-                const diff = Math.max(0, timestamp - Date.now())
+                const diff = Math.max(0, timestamp - now)
                 const seconds = Math.floor(diff / 1000)
                 const minutes = Math.floor(seconds / 60)
                 const remainingSeconds = seconds % 60
@@ -853,7 +855,7 @@
                 </div>
 
                 <div class="actions">
-                        <button class="primary" onclick={loadMetrics} disabled={$metricsLoading}>
+                        <button class="primary w-full" onclick={loadMetrics} disabled={$metricsLoading}>
                                 {#if $metricsLoading}
                                         Collecting…
                                 {:else}
@@ -861,15 +863,17 @@
                                 {/if}
                         </button>
                         {#if $nextSyncTime === null}
-                                <button class="secondary" onclick={startAutoSync} disabled={!$metrics}>
+                                <button class="secondary w-full" onclick={startAutoSync} disabled={!$metrics}>
                                         Start auto-sync
                                 </button>
                         {:else}
-                                <button class="secondary" onclick={stopAutoSync}>
+                        <div>
+                                <button class="secondary w-full" onclick={stopAutoSync}>
                                         Stop auto-sync
                                 </button>
-                                <div class="sync-timer">
-                                        Next update in: {formatTimeUntilSync($nextSyncTime)}
+                                <div class="sync-timer w-full text-center self-center">
+                                        Next update in: {formatTimeUntilSync($nextSyncTime, $currentTime)}
+                                </div>
                                 </div>
                         {/if}
                 </div>
@@ -1000,12 +1004,12 @@
                 </div>
 
                 {#if agentStatusMessage}
-                        <div style="margin-top: 1rem; padding: 0.75rem; background: {agentRunning ? '#d4edda' : '#f8f9fa'}; border: 1px solid {agentRunning ? '#c3e6cb' : '#dee2e6'}; border-radius: 4px; font-size: 0.9rem;">
+                        <div style="margin-top: 1rem; padding: 0.75rem; border: 1px solid {agentRunning ? '#c3e6cb' : '#dee2e6'}; border-radius: 4px; font-size: 0.9rem;">
                                 <strong>Status:</strong> {agentStatusMessage}
                         </div>
                 {/if}
 
-                <details style="margin-top: 1rem; padding: 0.5rem; background: #e3f2fd; border-radius: 4px;">
+                <details style="margin-top: 1rem; padding: 0.5rem;">
                         <summary style="cursor: pointer; font-weight: bold;">ℹ️ How to get API keys</summary>
                         <div style="margin-top: 0.5rem; font-size: 0.9rem; line-height: 1.6;">
                                 <p><strong>LiveKit Cloud:</strong></p>
@@ -1298,8 +1302,6 @@
 
         .actions,
         .voice-actions {
-                display: flex;
-                flex-wrap: wrap;
                 gap: 0.75rem;
         }
 
@@ -1384,9 +1386,7 @@
         }
 
         .sync-timer {
-                display: flex;
-                align-items: center;
-                padding: 0.65rem 1.3rem;
+                padding: 0.65rem 0rem;
                 background: rgba(56, 189, 248, 0.15);
                 border: 1px solid rgba(56, 189, 248, 0.35);
                 border-radius: 999px;

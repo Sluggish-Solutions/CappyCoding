@@ -8,11 +8,88 @@ import json
 import sys
 import subprocess
 from pathlib import Path
+from datetime import datetime, timezone
+from uuid import uuid4
 from dotenv import load_dotenv
 
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli, function_tool
 from livekit.agents.voice import Agent as VoiceAgent, AgentSession
 from livekit.plugins import anthropic, silero
+
+
+# Claude Usage Logger for tracking API calls
+class ClaudeUsageLogger:
+    """Logs Claude API usage to JSONL file compatible with claude-monitor."""
+    
+    def __init__(self, log_path: str | None = None):
+        if log_path is None:
+            self.log_path = Path.home() / ".claude" / "projects" / "voice-agent.jsonl"
+        else:
+            self.log_path = Path(log_path)
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Session tracking
+        self.total_tokens = 0
+        self.total_cost = 0.0
+        
+        # Model pricing (per 1M tokens)
+        self.pricing = {
+            "claude-sonnet-4-5": {"input": 3.00, "output": 15.00},
+            "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00},
+            "claude-3-5-sonnet": {"input": 3.00, "output": 15.00},
+        }
+    
+    def log_usage(
+        self,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        cache_creation_tokens: int = 0,
+        cache_read_tokens: int = 0,
+    ):
+        """Log a single API call to the JSONL file."""
+        timestamp = datetime.now(timezone.utc)
+        cost = self._calculate_cost(model, input_tokens, output_tokens)
+        
+        entry = {
+            "uuid": str(uuid4()),
+            "timestamp": timestamp.isoformat().replace("+00:00", "Z"),
+            "model": model,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_creation_tokens": cache_creation_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "cost_usd": cost,
+            "request_id": f"voice-{timestamp.strftime('%Y%m%d-%H%M%S')}",
+            "source": "voice-agent",
+        }
+        
+        # Append to JSONL file
+        with open(self.log_path, "a") as f:
+            f.write(json.dumps(entry) + "\n")
+        
+        # Update session totals
+        total_tokens = input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens
+        self.total_tokens += total_tokens
+        self.total_cost += cost
+        
+        print(f"📊 Logged usage: {total_tokens:,} tokens (${cost:.4f}) → {self.log_path}")
+        return entry
+    
+    def _calculate_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
+        """Calculate cost based on model pricing."""
+        if model not in self.pricing:
+            # Default to sonnet pricing
+            model = "claude-sonnet-4-5"
+        
+        prices = self.pricing[model]
+        input_cost = (input_tokens / 1_000_000) * prices["input"]
+        output_cost = (output_tokens / 1_000_000) * prices["output"]
+        return input_cost + output_cost
+
+
+# Global logger instance
+usage_logger = ClaudeUsageLogger()
 
 # Load environment variables from .env file
 load_dotenv()
@@ -174,10 +251,35 @@ I can help you understand and work with this codebase:
 - read_file(path): Read any file in the project
 - search_code(query): Search for text across all code files
 - list_files(directory): List files in any directory (use "." for root)
+- log_conversation_usage(tokens): Log Claude API usage for metrics
 
 Ask me to read specific files, search for functions, or explore the project structure!
 """
         return info
+    
+    @function_tool()
+    async def log_conversation_usage(self, estimated_tokens: int = 1000) -> str:
+        """
+        Log usage for this conversation turn to track Claude API costs.
+        
+        Args:
+            estimated_tokens: Rough estimate of tokens used (default: 1000)
+        """
+        try:
+            # Log estimated usage
+            # In production, this would come from actual API responses
+            input_tokens = int(estimated_tokens * 0.6)  # Rough estimate
+            output_tokens = int(estimated_tokens * 0.4)
+            
+            usage_logger.log_usage(
+                model="claude-sonnet-4-5",
+                input_tokens=input_tokens,
+                output_tokens=output_tokens
+            )
+            
+            return f"✅ Logged ~{estimated_tokens} tokens. Session total: {usage_logger.total_tokens:,} tokens (${usage_logger.total_cost:.4f})"
+        except Exception as e:
+            return f"⚠️ Failed to log usage: {e}"
 
 async def entrypoint(ctx: JobContext):
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
