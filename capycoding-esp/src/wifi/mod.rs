@@ -144,14 +144,32 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
 
     let mut buffer = [0u8; 4096];
 
-    let token = {
+    let token = loop {
         let config = get_capy_config().lock().await;
 
-        config
+        match config
             .as_ref()
             .and_then(|c| Some(c.api_tokens.github.clone()))
-            .expect("GitHub token not configured")
+        {
+            Some(token) => break token.clone(),
+            None => {
+                info!("Waiting for github token!");
+                Timer::after(Duration::from_millis(500)).await
+            }
+        }
     };
+    // let token = {
+    //     while let (config) = get_capy_config().lock().await {
+    //         Timer::after(Duration::from_millis(500)).await;
+    //     }
+
+    //     let config = get_capy_config().lock().await;
+
+    //     config
+    //         .as_ref()
+    //         .and_then(|c| Some(c.api_tokens.github.clone()))
+    //         .expect("GitHub token not configured")
+    // };
 
     let auth_header = format!("token {}", token);
 
