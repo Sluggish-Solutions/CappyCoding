@@ -33,6 +33,8 @@ struct ConfigService {
     github_token: heapless::Vec<u8, 50>,
 }
 
+struct ClaudeService {}
+
 #[embassy_executor::task]
 pub async fn ble_task(radio: &'static RadioController<'static>, bt: peripherals::BT<'static>) {
     info!("BLE task started!");

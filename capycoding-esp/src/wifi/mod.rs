@@ -12,7 +12,7 @@ use embassy_net::{
 };
 use embassy_time::{Duration, Timer};
 use esp_radio::wifi::{ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState};
-use log::info;
+use log::{error, info};
 
 use crate::{
     get_capy_config,
@@ -176,7 +176,14 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
             .unwrap()
             .headers(&headers);
 
-        let response = http_req.send(&mut buffer).await.unwrap();
+        let response = match http_req.send(&mut buffer).await {
+            Ok(o) => o,
+            Err(e) => {
+                error!("{e:?}");
+                continue;
+            }
+        };
+
         info!("Got response");
         let res = response.body().read_to_end().await.unwrap();
 
@@ -188,14 +195,16 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
         drop(http_req);
 
         info!("making new request");
-        let mut http_req = client
+        let mut http_req = match client
             .request(
                 reqwless::request::Method::GET,
                 "https://cappycoding.koyeb.app/metrics/workflows?user=suri-codes&per_page=5",
             )
             .await
-            .unwrap()
-            .headers(&headers);
+        {
+            Ok(o) => o.headers(&headers),
+            Err(_) => continue,
+        };
 
         let response = http_req.send(&mut buffer).await.unwrap();
         info!("Got response");
@@ -234,6 +243,8 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
             pr: prs,
             workflow: workflows,
         });
+
+        drop(state);
 
         Timer::after_secs(60).await;
     }

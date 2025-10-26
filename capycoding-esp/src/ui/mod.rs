@@ -1,4 +1,4 @@
-use alloc::{borrow::ToOwned, fmt::format, vec::Vec};
+use alloc::{borrow::ToOwned, format, vec::Vec};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use once_cell::sync::OnceCell;
 use ratatui::{
@@ -48,15 +48,16 @@ pub fn root_draw(
     >,
 ) {
     if config.is_some() {
-        if state.is_none() {
-            let text = "Loading Data".to_owned();
+        if let Some(ref state) = *state {
+            //MAIN loop
+            let text = format!("Data Loaded: total commits: {}!", state.commits.total);
             let paragraph = Paragraph::new(text.dark_gray()).wrap(Wrap { trim: true });
             let bordered_block = Block::bordered()
                 .border_style(Style::new().yellow())
                 .title("Mousefood");
             frame.render_widget(paragraph.block(bordered_block), frame.area());
         } else {
-            let text = "Data Loaded!".to_owned();
+            let text = "Loading Data".to_owned();
             let paragraph = Paragraph::new(text.dark_gray()).wrap(Wrap { trim: true });
             let bordered_block = Block::bordered()
                 .border_style(Style::new().yellow())
