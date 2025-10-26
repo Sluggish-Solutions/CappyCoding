@@ -32,6 +32,7 @@ embassy-net = { version = "0.7.0", features = [
   "medium-ethernet",
   "tcp",
   "udp",
+  "dns"
 ] }
 embedded-io = "0.7.1"
 embedded-io-async = "0.7.0"
@@ -68,6 +69,9 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
   "socket-raw",
   "socket-tcp",
   "socket-udp",
+
+  
+"dns-max-server-count-4", 
 ] }
 trouble-host = { version = "0.5.0", features = ["gatt"] }
 
@@ -91,7 +95,16 @@ esp-storage = { version = "0.8.0", features = ["esp32c3"] }
 serde = {version = "1.0.228", default-features = false}
 postcard = "1.1.3"
 embedded-storage = "0.3.1"
+embassy-sync = "0.7.2"
 
+
+reqwless = { version = "0.13.0", default-features = false, features = [
+    "embedded-tls",
+] }
+
+embassy-futures = "0.1.2"
+
+ble-types = {path = "../ble-types"}
 
 [patch.crates-io]
 ratatui = { git = "https://github.com/suri-codes/ratatui.git", branch = "main" }

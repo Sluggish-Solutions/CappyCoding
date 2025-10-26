@@ -19,8 +19,7 @@ use esp_hal::{
     spi::master::Spi,
 };
 
-use crate::widgets::root_draw;
-pub extern crate alloc;
+use crate::{CapyConfigHandle, ui::root_draw};
 
 pub type CapyDisplay = Display<128, 296, 4736, weact_studio_epd::Color>;
 
@@ -71,12 +70,22 @@ pub fn setup_weact_term<'a>(
 
 /// render task for capycode
 #[embassy_executor::task]
-pub async fn ui_task(spi: Spi<'static, Blocking>, term_init_pins: WeactTermInitPins) {
+pub async fn ui_task(
+    spi: Spi<'static, Blocking>,
+    term_init_pins: WeactTermInitPins,
+    config_ref: CapyConfigHandle,
+) {
     info!("UI task started!");
     let mut display = Display290BlackWhite::new();
     let mut term = setup_weact_term(spi, &mut display, term_init_pins);
     loop {
-        term.draw(|f| root_draw(f)).unwrap();
+        let config: embassy_sync::mutex::MutexGuard<
+            '_,
+            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            Option<crate::CapyConfig>,
+        > = config_ref.lock().await;
+
+        term.draw(|f| root_draw(f, config)).unwrap();
         Timer::after_millis(5).await;
     }
 }
