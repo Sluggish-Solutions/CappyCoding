@@ -9,9 +9,9 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use crate::types::{
-    ClaudeMetricsRequest, ClaudeMetricsSnapshot, ClaudeQuestionRequest, ClaudeQuestionResponse,
-    ClaudeUsage, ClaudeVoiceRequest, ClaudeVoiceResponse, LivekitTokenRequest,
-    LivekitTokenResponse, PushClaudeMetricsRequest,
+    AgentConfig, AgentStatus, ClaudeMetricsRequest, ClaudeMetricsSnapshot,
+    ClaudeQuestionRequest, ClaudeQuestionResponse, ClaudeUsage, ClaudeVoiceRequest,
+    ClaudeVoiceResponse, LivekitTokenRequest, LivekitTokenResponse, PushClaudeMetricsRequest,
 };
 
 const PYTHON_METRICS_SCRIPT: &str = include_str!("python/collect_metrics.py");
@@ -39,6 +39,16 @@ trait Api {
     async fn generate_livekit_token(
         request: LivekitTokenRequest,
     ) -> Result<LivekitTokenResponse, String>;
+    
+    async fn save_agent_config(config: AgentConfig) -> Result<(), String>;
+    
+    async fn load_agent_config() -> Result<Option<AgentConfig>, String>;
+    
+    async fn start_agent() -> Result<AgentStatus, String>;
+    
+    async fn stop_agent() -> Result<(), String>;
+    
+    async fn get_agent_status() -> Result<AgentStatus, String>;
 }
 
 #[derive(Clone)]
@@ -245,8 +255,8 @@ impl Api for ApiImpl {
             "model": request
                 .model
                 .clone()
-                .unwrap_or_else(|| "claude-3-5-sonnet-latest".to_string()),
-            "max_output_tokens": request.max_output_tokens.unwrap_or(800),
+                .unwrap_or_else(|| "claude-sonnet-4-5".to_string()),
+            "max_tokens": request.max_output_tokens.unwrap_or(800),
             "temperature": request.temperature.unwrap_or(0.2),
             "messages": [
                 {
@@ -366,27 +376,13 @@ impl Api for ApiImpl {
             "model": request
                 .model
                 .clone()
-                .unwrap_or_else(|| "claude-3-5-sonnet-latest".to_string()),
-            "max_output_tokens": request.max_output_tokens.unwrap_or(800),
+                .unwrap_or_else(|| "claude-sonnet-4-5".to_string()),
+            "max_tokens": request.max_output_tokens.unwrap_or(800),
             "temperature": request.temperature.unwrap_or(0.2),
             "messages": [
                 {
                     "role": "user",
                     "content": content,
-                }
-            ],
-            "betas": [
-                "audio_input_2024-10-22",
-                "audio_output_2024-10-22"
-            ],
-            "response_format": [
-                {"type": "text"},
-                {
-                    "type": "audio",
-                    "audio": {
-                        "voice": voice,
-                        "format": "wav"
-                    }
                 }
             ],
         });
@@ -405,10 +401,6 @@ impl Api for ApiImpl {
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", request.api_key)
             .header("anthropic-version", "2023-06-01")
-            .header(
-                "anthropic-beta",
-                "audio_input_2024-10-22,audio_output_2024-10-22",
-            )
             .json(&body)
             .send()
             .await
@@ -571,6 +563,157 @@ impl Api for ApiImpl {
         Ok(LivekitTokenResponse {
             token,
             expires_at: expires_at.to_rfc3339(),
+        })
+    }
+    
+    async fn save_agent_config(self, config: AgentConfig) -> Result<(), String> {
+        let config_dir = dirs::config_dir()
+            .ok_or("Could not find config directory")?
+            .join("capycoding");
+        
+        tokio::fs::create_dir_all(&config_dir)
+            .await
+            .map_err(|e| format!("Failed to create config dir: {}", e))?;
+        
+        let config_path = config_dir.join("agent_config.json");
+        let config_json = serde_json::to_string_pretty(&config)
+            .map_err(|e| format!("Failed to serialize config: {}", e))?;
+        
+        tokio::fs::write(&config_path, config_json)
+            .await
+            .map_err(|e| format!("Failed to write config: {}", e))?;
+        
+        Ok(())
+    }
+    
+    async fn load_agent_config(self) -> Result<Option<AgentConfig>, String> {
+        let config_path = dirs::config_dir()
+            .ok_or("Could not find config directory")?
+            .join("capycoding")
+            .join("agent_config.json");
+        
+        if !config_path.exists() {
+            return Ok(None);
+        }
+        
+        let config_json = tokio::fs::read_to_string(&config_path)
+            .await
+            .map_err(|e| format!("Failed to read config: {}", e))?;
+        
+        let config: AgentConfig = serde_json::from_str(&config_json)
+            .map_err(|e| format!("Failed to parse config: {}", e))?;
+        
+        Ok(Some(config))
+    }
+    
+    async fn start_agent(self) -> Result<AgentStatus, String> {
+        // Get project root (2 levels up from src-tauri)
+        let project_root = std::env::current_dir()
+            .map_err(|e| format!("Failed to get current dir: {}", e))?
+            .parent()
+            .ok_or("Failed to get parent dir")?
+            .parent()
+            .ok_or("Failed to get grandparent dir")?
+            .to_path_buf();
+        
+        let agent_path = project_root.join("agent.py");
+        let venv_python = project_root.join("env").join("bin").join("python");
+        
+        if !agent_path.exists() {
+            return Err("agent.py not found in project root".to_string());
+        }
+        
+        if !venv_python.exists() {
+            return Err("Python virtual environment not found at env/bin/python".to_string());
+        }
+        
+        // Start the agent in background
+        let child = Command::new(&venv_python)
+            .arg(&agent_path)
+            .arg("dev")
+            .current_dir(&project_root)
+            .spawn()
+            .map_err(|e| format!("Failed to start agent: {}", e))?;
+        
+        let pid = child.id().ok_or("Failed to get process ID")?;
+        
+        Ok(AgentStatus {
+            running: true,
+            pid: Some(pid),
+        })
+    }
+    
+    async fn stop_agent(self) -> Result<(), String> {
+        // Kill all Python processes running agent.py (including dev watcher)
+        #[cfg(target_os = "macos")]
+        {
+            // First try SIGTERM
+            Command::new("pkill")
+                .args(&["-f", "python.*agent.py"])
+                .output()
+                .await
+                .map_err(|e| format!("Failed to stop agent: {}", e))?;
+            
+            // Wait a moment, then force kill any remaining processes
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            Command::new("pkill")
+                .args(&["-9", "-f", "python.*agent.py"])
+                .output()
+                .await
+                .ok(); // Ignore errors on force kill
+        }
+        
+        #[cfg(target_os = "linux")]
+        {
+            Command::new("pkill")
+                .args(&["-f", "python.*agent.py"])
+                .output()
+                .await
+                .map_err(|e| format!("Failed to stop agent: {}", e))?;
+            
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+            Command::new("pkill")
+                .args(&["-9", "-f", "python.*agent.py"])
+                .output()
+                .await
+                .ok();
+        }
+        
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("taskkill")
+                .args(&["/F", "/IM", "python.exe"])
+                .output()
+                .await
+                .map_err(|e| format!("Failed to stop agent: {}", e))?;
+        }
+        
+        Ok(())
+    }
+    
+    async fn get_agent_status(self) -> Result<AgentStatus, String> {
+        // Check if agent process is running
+        #[cfg(not(target_os = "windows"))]
+        {
+            let output = Command::new("pgrep")
+                .args(&["-f", "python.*agent.py"])
+                .output()
+                .await
+                .map_err(|e| format!("Failed to check agent status: {}", e))?;
+            
+            if output.status.success() && !output.stdout.is_empty() {
+                let pid_str = String::from_utf8_lossy(&output.stdout);
+                let pid: u32 = pid_str.trim().parse().unwrap_or(0);
+                return Ok(AgentStatus {
+                    running: true,
+                    pid: Some(pid),
+                });
+            }
+        }
+        
+        Ok(AgentStatus {
+            running: false,
+            pid: None,
         })
     }
 }

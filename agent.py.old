@@ -1,0 +1,158 @@
+"""
+LiveKit Voice Agent using LiveKit Inference and Anthropic Claude
+
+This agent uses LiveKit's built-in inference for STT/TTS and Anthropic plugin for Claude.
+Configuration can be set via environment variables or Tauri frontend.
+"""
+
+import os
+import json
+import sys
+from pathlib import Path
+from dotenv import load_dotenv
+
+from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli, llm
+from livekit.agents.voice import Agent as VoiceAgent, AgentSession
+from livekit.plugins import anthropic, silero, deepgram, cartesia
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Determine config path based on OS
+if sys.platform == "darwin":  # macOS
+    config_path = Path.home() / "Library" / "Application Support" / "capycoding" / "agent_config.json"
+else:  # Linux/Windows
+    config_path = Path.home() / ".config" / "capycoding" / "agent_config.json"
+
+# Also try to load from Tauri config file
+if config_path.exists():
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+            # Set environment variables from config file if not already set
+            for key, env_var in [
+                ("livekit_url", "LIVEKIT_URL"),
+                ("livekit_api_key", "LIVEKIT_API_KEY"),
+                ("livekit_api_secret", "LIVEKIT_API_SECRET"),
+                ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+            ]:
+                if not os.getenv(env_var):
+                    os.environ[env_var] = config.get(key, "")
+            print("✓ Loaded config from frontend")
+    except Exception as e:
+        print(f"⚠️  Could not load config from {config_path}: {e}")
+
+
+async def entrypoint(ctx: JobContext):
+    """Main entry point for the agent"""
+    
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        print("❌ ANTHROPIC_API_KEY not found")
+        return
+    
+    print(f"🎙️  Connecting to room: {ctx.room.name}")
+    
+    # Connect to room
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+    
+    # Create initial chat context
+    # Create voice assistant using the voice.Agent API  
+    assistant = VoiceAgent(
+        instructions="You are a helpful and concise AI assistant. Keep responses brief and to the point.",
+        vad=silero.VAD.load(),
+        stt=deepgram.STT(model="nova-2", language="en"),
+        llm=anthropic.LLM(model="claude-sonnet-4-5", temperature=0.7),
+        tts=cartesia.TTS(voice="248be419-c632-4f23-adf1-5324ed7dbf1d"),
+    )
+    
+    # Connect the agent to the room
+    await assistant.astart(ctx.room)
+    
+    print("✅ Agent started successfully")
+
+
+if __name__ == "__main__":
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+
+import os
+import json
+from pathlib import Path
+from dotenv import load_dotenv
+
+from livekit import agents
+from livekit.agents import AgentSession, AutoSubscribe, JobContext, WorkerOptions, cli
+from livekit.plugins import anthropic, silero
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Determine config path based on OS (for the second location)
+if sys.platform == "darwin":  # macOS
+    config_path = Path.home() / "Library" / "Application Support" / "capycoding" / "agent_config.json"
+else:  # Linux/Windows
+    config_path = Path.home() / ".config" / "capycoding" / "agent_config.json"
+
+# Also try to load from Tauri config file
+if config_path.exists():
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+            # Set environment variables from config file if not already set
+            if not os.getenv("LIVEKIT_URL"):
+                os.environ["LIVEKIT_URL"] = config.get("livekit_url", "")
+            if not os.getenv("LIVEKIT_API_KEY"):
+                os.environ["LIVEKIT_API_KEY"] = config.get("livekit_api_key", "")
+            if not os.getenv("LIVEKIT_API_SECRET"):
+                os.environ["LIVEKIT_API_SECRET"] = config.get("livekit_api_secret", "")
+            if not os.getenv("ANTHROPIC_API_KEY"):
+                os.environ["ANTHROPIC_API_KEY"] = config.get("anthropic_api_key", "")
+    except Exception as e:
+        print(f"⚠️  Could not load config from {config_path}: {e}")
+
+
+async def entrypoint(ctx: JobContext):
+    """Main entry point for the agent"""
+    
+    # Get Claude API key
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_key:
+        print("❌ ANTHROPIC_API_KEY not found in environment")
+        return
+    
+    print(f"🎙️  Connecting to room: {ctx.room.name}")
+    
+    # Create agent session using LiveKit Inference for STT/TTS
+    # and Anthropic plugin for Claude LLM
+    session = AgentSession(
+        # Speech-to-Text: Using LiveKit Inference (Deepgram)
+        stt="deepgram/nova-2-conversational:en",
+        
+        # Large Language Model: Using Anthropic Claude plugin
+        llm=anthropic.LLM(
+            model="claude-sonnet-4-5",  # or "claude-3-5-sonnet-20240620"
+            temperature=0.7,
+        ),
+        
+        # Text-to-Speech: Using LiveKit Inference (Cartesia)
+        tts="cartesia/sonic-2:248be419-c632-4f23-adf1-5324ed7dbf1d",  # Classy British Man
+        
+        # Voice Activity Detection
+        vad=silero.VAD.load(),
+    )
+    
+    # Connect to room
+    await ctx.connect()
+    
+    # Start the session
+    await session.start(ctx.room)
+    
+    # Optional: Greet the user  
+    await session.say("Hello! I'm ready to help. What would you like to know?")
+    
+    print("✅ Agent started successfully")
+
+
+if __name__ == "__main__":
+    # Run the worker
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))

@@ -98,3 +98,19 @@ pub struct LivekitTokenResponse {
     pub token: String,
     pub expires_at: String,
 }
+
+#[taurpc::ipc_type]
+pub struct AgentConfig {
+    pub livekit_url: String,
+    pub livekit_api_key: String,
+    pub livekit_api_secret: String,
+    pub anthropic_api_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codebase_path: Option<String>,
+}
+
+#[taurpc::ipc_type]
+pub struct AgentStatus {
+    pub running: bool,
+    pub pid: Option<u32>,
+}

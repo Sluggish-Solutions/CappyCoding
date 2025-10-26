@@ -4,6 +4,10 @@ import { createTauRPCProxy as createProxy, type InferCommandOutput } from 'taurp
 type TAURI_CHANNEL<T> = (response: T) => void
 
 
+export type AgentConfig = { livekit_url: string; livekit_api_key: string; livekit_api_secret: string; anthropic_api_key: string; codebase_path?: string | null }
+
+export type AgentStatus = { running: boolean; pid: number | null }
+
 export type ClaudeMetricsRequest = { data_dir: string | null; hours_back: number | null; python_path: string | null }
 
 export type ClaudeMetricsSnapshot = { timestamp: string; window_hours: number; burn_rate_per_hour: number; total_cost_usd: number; input_tokens: number; output_tokens: number; cache_creation_tokens: number; cache_read_tokens: number; total_tokens: number; session_count: number; active_session_id: string | null; last_activity: string; source: string | null }
@@ -24,13 +28,18 @@ export type LivekitTokenResponse = { token: string; expires_at: string }
 
 export type PushClaudeMetricsRequest = { metrics: ClaudeMetricsSnapshot; server_url: string; auth_token: string | null }
 
-const ARGS_MAP = { '':'{"ask_claude":["request"],"ask_claude_voice":["request"],"collect_claude_metrics":["request"],"connect_device":["github_token","wifi_name","wifi_pass"],"generate_livekit_token":["request"],"push_claude_metrics":["request"]}' }
+const ARGS_MAP = { '':'{"ask_claude":["request"],"ask_claude_voice":["request"],"collect_claude_metrics":["request"],"connect_device":["github_token","wifi_name","wifi_pass"],"generate_livekit_token":["request"],"get_agent_status":[],"load_agent_config":[],"push_claude_metrics":["request"],"save_agent_config":["config"],"start_agent":[],"stop_agent":[]}' }
 export type Router = { "": {ask_claude: (request: ClaudeQuestionRequest) => Promise<ClaudeQuestionResponse>, 
 ask_claude_voice: (request: ClaudeVoiceRequest) => Promise<ClaudeVoiceResponse>, 
 collect_claude_metrics: (request: ClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>, 
 connect_device: (githubToken: string, wifiName: string, wifiPass: string) => Promise<string>, 
 generate_livekit_token: (request: LivekitTokenRequest) => Promise<LivekitTokenResponse>, 
-push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>} };
+get_agent_status: () => Promise<AgentStatus>, 
+load_agent_config: () => Promise<AgentConfig | null>, 
+push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>, 
+save_agent_config: (config: AgentConfig) => Promise<null>, 
+start_agent: () => Promise<AgentStatus>, 
+stop_agent: () => Promise<null>} };
 
 
 export const createTauRPCProxy = () => createProxy<Router>(ARGS_MAP)

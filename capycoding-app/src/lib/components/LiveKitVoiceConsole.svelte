@@ -228,6 +228,10 @@
                 }
 
                 try {
+                        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                                sessionError.set('Media devices API is not available. Ensure you are using HTTPS.')
+                                return
+                        }
                         const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true })
                         permissionStream.getTracks().forEach((mediaTrack) => mediaTrack.stop())
                 } catch (error) {
@@ -346,6 +350,10 @@
                         return
                 }
                 try {
+                        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                                promptError.set('Media devices API is not available. Ensure you are using HTTPS.')
+                                return
+                        }
                         const deviceId = get(selectedMicrophone)
                         const constraints: MediaStreamConstraints = {
                                 audio: deviceId ? { deviceId: { exact: deviceId } } : true,

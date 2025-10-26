@@ -91,7 +91,6 @@
         let agentLivekitApiKey = ''
         let agentLivekitApiSecret = ''
         let agentAnthropicApiKey = ''
-        let agentCodebasePath = ''
         let agentRunning = false
         let agentPid: number | null = null
         let agentStatusMessage = ''
@@ -662,7 +661,6 @@
                                 agentLivekitApiKey = config.livekit_api_key
                                 agentLivekitApiSecret = config.livekit_api_secret
                                 agentAnthropicApiKey = config.anthropic_api_key
-                                agentCodebasePath = config.codebase_path || ''
                                 agentConfigSaved = true
                                 agentStatusMessage = 'Configuration loaded successfully'
                         } else {
@@ -685,7 +683,6 @@
                                 livekit_api_key: agentLivekitApiKey,
                                 livekit_api_secret: agentLivekitApiSecret,
                                 anthropic_api_key: agentAnthropicApiKey,
-                                codebase_path: agentCodebasePath.trim() || null,
                         })
                         agentConfigSaved = true
                         agentStatusMessage = 'Configuration saved successfully!'
@@ -716,11 +713,7 @@
                         await taurpc[''].stop_agent()
                         agentRunning = false
                         agentPid = null
-                        agentStatusMessage = 'Agent stopping...'
-                        // Wait a bit for the process to fully stop, then check status
-                        setTimeout(async () => {
-                                await checkAgentStatus()
-                        }, 1000)
+                        agentStatusMessage = 'Agent stopped'
                 } catch (error) {
                         agentStatusMessage = 'Error stopping agent: ' + (error instanceof Error ? error.message : String(error))
                 }
@@ -926,10 +919,6 @@
                                 Configure and manage the LiveKit voice agent. The agent uses LiveKit Inference for
                                 speech-to-text (Deepgram) and text-to-speech (Cartesia), plus Claude for AI responses.
                         </p>
-                        <p>
-                                <strong>Codebase Awareness:</strong> The agent can read files, search code, and explore any project you point it to.
-                                Set a codebase path below to analyze a specific project, or leave empty to use the agent's working directory.
-                        </p>
                 </header>
 
                 <div class="voice-grid">
@@ -962,14 +951,6 @@
                                         placeholder="sk-ant-••••••••••••••••"
                                         bind:value={agentAnthropicApiKey}
                                 />
-                        </label>
-                        <label>
-                                Codebase Path (optional)
-                                <input
-                                        placeholder="/path/to/your/codebase"
-                                        bind:value={agentCodebasePath}
-                                />
-                                <small style="opacity: 0.7;">Leave empty to use agent's working directory</small>
                         </label>
                 </div>
 
@@ -1028,29 +1009,122 @@
                 <section class="panel">
                 <div class="sr-only" aria-hidden="true" bind:this={remoteAudioContainer}></div>
                 <header>
-                        <h1>🎙️ Connect to Voice Session</h1>
+                        <h1>LiveKit Voice Agent</h1>
                         <p>
-                                Once the agent is running above, connect to start talking. The agent automatically handles everything - just speak naturally!
+                                Connect to LiveKit with the voice agent running. The agent handles speech-to-text,
+                                Claude AI responses, and text-to-speech automatically. Just speak naturally!
                         </p>
+                        <details style="margin-top: 1rem; padding: 0.5rem; background: #f0f0f0; border-radius: 4px;">
+                                <summary style="cursor: pointer; font-weight: bold;">📋 Connection Instructions</summary>
+                                <div style="margin-top: 0.5rem; font-size: 0.9rem;">
+                                        <p><strong>Before connecting:</strong></p>
+                                        <ol style="margin-left: 1.5rem; line-height: 1.6;">
+                                                <li>Configure and start the agent in the <strong>Voice Agent Configuration</strong> section above</li>
+                                                <li>Wait for the agent status to show "Agent running"</li>
+                                                <li>Fill in the connection details below (use the same LiveKit credentials)</li>
+                                                <li>Click "Connect to Voice Session"</li>
+                                                <li>Start speaking naturally - the agent will respond!</li>
+                                        </ol>
+                                        <p style="margin-top: 0.5rem;"><em>💡 The agent uses LiveKit Inference for STT/TTS - no additional API keys needed!</em></p>
+                                </div>
+                        </details>
                 </header>
 
                 <div class="voice-grid">
                         <label>
+                                LiveKit URL
+                                <input
+                                        placeholder="wss://example.livekit.cloud"
+                                        bind:value={livekitUrl}
+                                />
+                        </label>
+                        <label>
+                                LiveKit API key
+                                <input
+                                        placeholder="LKXXXXXXXXXXXXXXXX"
+                                        bind:value={livekitApiKey}
+                                />
+                        </label>
+                        <label>
+                                LiveKit API secret
+                                <input type="password" bind:value={livekitApiSecret} />
+                        </label>
+                        <label>
                                 Participant identity
                                 <input
-                                        placeholder="my-laptop"
+                                        placeholder="laptop-debugger"
                                         bind:value={livekitIdentity}
                                 />
                         </label>
                         <label>
                                 Room name
-                                <input placeholder="my-voice-room" bind:value={livekitRoom} />
+                                <input placeholder="debug-room" bind:value={livekitRoom} />
                         </label>
                         <label>
                                 Display name (optional)
-                                <input placeholder="User" bind:value={livekitName} />
+                                <input bind:value={livekitName} />
+                        </label>
+                        <label>
+                                Metadata (optional)
+                                <input bind:value={livekitMetadata} />
+                        </label>
+                        <label>
+                                Token TTL (seconds)
+                                <input type="number" min="60" bind:value={livekitTtl} />
+                        </label>
+                        <fieldset>
+                                <legend>LiveKit permissions</legend>
+                                <label class="checkbox">
+                                        <input type="checkbox" bind:checked={canPublish} />
+                                        <span>Publish tracks</span>
+                                </label>
+                                <label class="checkbox">
+                                        <input type="checkbox" bind:checked={canSubscribe} />
+                                        <span>Subscribe to tracks</span>
+                                </label>
+                                <label class="checkbox">
+                                        <input type="checkbox" bind:checked={canPublishData} />
+                                        <span>Publish data</span>
+                                </label>
+                        </fieldset>
+                        <label>
+                                Claude API key
+                                <input type="password" bind:value={apiKey} />
+                        </label>
+                        <label>
+                                Claude model
+                                <input bind:value={voiceModel} />
+                        </label>
+                        <label>
+                                Max output tokens
+                                <input type="number" min="1" bind:value={voiceMaxTokens} />
+                        </label>
+                        <label>
+                                Temperature
+                                <input type="number" step="0.1" bind:value={voiceTemperature} />
+                        </label>
+                        <label>
+                                Voice
+                                <input bind:value={voiceChoice} />
+                        </label>
+                        <label class="checkbox">
+                                <input type="checkbox" bind:checked={autoPlayVoice} />
+                                <span>Auto play Claude’s reply</span>
                         </label>
                 </div>
+
+                <label class="stacked">
+                        System prompt
+                        <textarea rows="3" bind:value={systemPrompt} />
+                </label>
+                <label class="stacked">
+                        Code context (optional)
+                        <textarea rows="3" bind:value={codeContext} />
+                </label>
+                <label class="stacked">
+                        Transcript hint (optional)
+                        <textarea rows="2" bind:value={transcriptHint} />
+                </label>
 
                 <div class="voice-actions">
                         {#if $livekitState === 'connected'}
@@ -1066,10 +1140,17 @@
                                         {#if $livekitState === 'connecting'}
                                                 Connecting…
                                         {:else}
-                                                Connect to Voice Session
+                                                Connect & enable mic
                                         {/if}
                                 </button>
                         {/if}
+                        <button
+                                class={`record ${$voiceRecording ? 'recording' : ''}`}
+                                onclick={$voiceRecording ? stopRecording : startRecording}
+                                disabled={$livekitState !== 'connected' || $voiceLoading}
+                        >
+                                {$voiceRecording ? 'Stop listening' : 'Ask question'}
+                        </button>
                 </div>
 
                 {#if voiceStatusMessage}
