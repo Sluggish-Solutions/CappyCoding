@@ -105,7 +105,7 @@ export type LivekitVoiceBridgeRequest = {
 
 const ARGS_MAP = {
         '':
-                '{"ask_claude":["request"],"bridge_livekit_voice":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"],"relay_claude_voice":["request"]}',
+                '{"ask_claude":["request"],"bridge_livekit_voice":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"],"relay_claude_voice":["request"],"relay_livekit_audio":["request"]}',
 }
 
 export type Router = {
@@ -116,6 +116,7 @@ export type Router = {
                 generate_livekit_token: (request: LivekitTokenRequest) => Promise<LivekitTokenResponse>
                 push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>
                 relay_claude_voice: (request: ClaudeVoicePromptRequest) => Promise<ClaudeVoicePromptResponse>
+                relay_livekit_audio: (request: LivekitVoiceBridgeRequest) => Promise<ClaudeVoicePromptResponse>
         }
 }
 
