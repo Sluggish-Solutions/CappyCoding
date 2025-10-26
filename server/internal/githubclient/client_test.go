@@ -2,10 +2,13 @@ package githubclient
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v55/github"
 )
@@ -78,6 +81,43 @@ func TestPullRequestStatuses(t *testing.T) {
 	}
 }
 
+func TestUserPullRequestStatuses(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search/issues" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("per_page"); got != "7" {
+			t.Fatalf("unexpected per_page: %s", got)
+		}
+		query := r.URL.Query().Get("q")
+		if !strings.Contains(query, "author:alice") || !strings.Contains(query, "is:open") {
+			t.Fatalf("unexpected query: %s", query)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"items":[{"number":1,"title":"Feature","state":"open","html_url":"https://example.com/pr/1","updated_at":"2024-01-02T15:04:05Z","user":{"login":"alice"}}]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	prs, err := client.UserPullRequestStatuses(context.Background(), "alice", PullRequestOptions{State: "open", PerPage: 7})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(prs) != 1 {
+		t.Fatalf("expected 1 pr, got %d", len(prs))
+	}
+
+	if prs[0].Author != "alice" || prs[0].State != "open" {
+		t.Fatalf("unexpected pr: %+v", prs[0])
+	}
+}
+
 func TestWorkflowRuns(t *testing.T) {
 	t.Parallel()
 
@@ -110,6 +150,50 @@ func TestWorkflowRuns(t *testing.T) {
 	}
 }
 
+func TestUserWorkflowRuns(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/users/alice/repos":
+			if got := r.URL.Query().Get("per_page"); got != "50" {
+				t.Fatalf("unexpected repo per_page: %s", got)
+			}
+			_, _ = w.Write([]byte(`[{"name":"repo1","owner":{"login":"alice"}},{"name":"repo2","owner":{"login":"org"}}]`))
+		case "/repos/alice/repo1/actions/runs":
+			if got := r.URL.Query().Get("branch"); got != "main" {
+				t.Fatalf("unexpected branch query: %s", got)
+			}
+			_, _ = w.Write([]byte(`{"total_count":1,"workflow_runs":[{"id":10,"name":"ci","status":"completed","conclusion":"success","html_url":"https://example.com/run1","created_at":"2024-01-02T15:04:05Z","updated_at":"2024-01-02T16:04:05Z"}]}`))
+		case "/repos/org/repo2/actions/runs":
+			if got := r.URL.Query().Get("branch"); got != "main" {
+				t.Fatalf("unexpected branch query: %s", got)
+			}
+			_, _ = w.Write([]byte(`{"total_count":1,"workflow_runs":[{"id":11,"name":"deploy","status":"queued","conclusion":"","html_url":"https://example.com/run2","created_at":"2024-01-03T10:00:00Z","updated_at":"2024-01-03T10:05:00Z"}]}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	runs, err := client.UserWorkflowRuns(context.Background(), "alice", WorkflowOptions{Branch: "main", PerPage: 2})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(runs) != 2 {
+		t.Fatalf("expected 2 runs, got %d", len(runs))
+	}
+
+	if runs[0].Name != "ci" || runs[1].Name != "deploy" {
+		t.Fatalf("unexpected runs: %+v", runs)
+	}
+}
+
 func TestCommitCount(t *testing.T) {
 	t.Parallel()
 
@@ -139,6 +223,51 @@ func TestCommitCount(t *testing.T) {
 
 	if metrics.ByAuthor["alice"] != 1 || metrics.ByAuthor["Bob"] != 1 {
 		t.Fatalf("unexpected metrics: %+v", metrics.ByAuthor)
+	}
+}
+
+func TestUserCommitCount(t *testing.T) {
+	t.Parallel()
+
+	since := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2024, time.January, 31, 23, 59, 59, 0, time.UTC)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search/commits" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		query := r.URL.Query().Get("q")
+		// When both since and until are provided, expect range format (YYYY-MM-DD..YYYY-MM-DD)
+		expectedRange := fmt.Sprintf("committer-date:%s..%s", since.Format("2006-01-02"), until.Format("2006-01-02"))
+		if !strings.Contains(query, "author:alice") || !strings.Contains(query, expectedRange) {
+			t.Fatalf("unexpected query: %s (expected to contain: %s)", query, expectedRange)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"items":[{"sha":"1","author":{"login":"alice"},"commit":{"author":{"name":"Alice"}}},{"sha":"2","commit":{"author":{"name":"Bob"}}}]}`))
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server)
+
+	metrics, err := client.UserCommitCount(context.Background(), "alice", CommitOptions{Since: &since, Until: &until})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if metrics.Total != 2 {
+		t.Fatalf("expected total 2, got %d", metrics.Total)
+	}
+
+	if metrics.ByAuthor["alice"] != 1 || metrics.ByAuthor["Bob"] != 1 {
+		t.Fatalf("unexpected metrics: %+v", metrics.ByAuthor)
+	}
+
+	if metrics.Since == nil || !metrics.Since.Equal(since) {
+		t.Fatalf("unexpected since: %v", metrics.Since)
+	}
+	if metrics.Until == nil || !metrics.Until.Equal(until) {
+		t.Fatalf("unexpected until: %v", metrics.Until)
 	}
 }
 

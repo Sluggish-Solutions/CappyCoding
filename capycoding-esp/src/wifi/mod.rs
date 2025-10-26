@@ -14,6 +14,8 @@ use alloc::string::String;
 const SSID: &str = "Surendra S21";
 const PASSWORD: &str = "Surendra2006";
 
+mod api;
+
 #[embassy_executor::task]
 pub async fn wifi_task(stack: Stack<'static>, tls_seed: u64) {
     wait_for_connection(stack).await;

@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-github/v55/github"
 	"github.com/labstack/echo/v4"
 
+	"cappycoding/server/internal/claude"
 	"cappycoding/server/internal/githubclient"
 )
 
@@ -116,15 +118,19 @@ func TestResolveClient(t *testing.T) {
 
 func TestRegisterRoutesWithoutBaseClient(t *testing.T) {
 	server := httptest.NewServer(nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
-		if r.URL.Path != "/repos/owner/repo/pulls" {
+		if r.URL.Path != "/search/issues" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer override-token" {
 			t.Fatalf("unexpected authorization header: %s", got)
 		}
+		query := r.URL.Query().Get("q")
+		if !strings.Contains(query, "author:alice") {
+			t.Fatalf("unexpected query: %s", query)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`[{"number":1,"title":"Add feature","state":"open","html_url":"https://example.com/pr/1","updated_at":"2024-01-02T15:04:05Z","user":{"login":"alice"}}]`))
+		_, _ = w.Write([]byte(`{"items":[{"number":1,"title":"Add feature","state":"open","html_url":"https://example.com/pr/1","updated_at":"2024-01-02T15:04:05Z","user":{"login":"alice"}}]}`))
 	}))
 	defer server.Close()
 
@@ -136,9 +142,9 @@ func TestRegisterRoutesWithoutBaseClient(t *testing.T) {
 	defer func() { newGitHubClient = originalFactory }()
 
 	e := echo.New()
-	RegisterRoutes(e, nil)
+	RegisterRoutes(e, nil, claude.NewStore(10))
 
-	req := httptest.NewRequest(nethttp.MethodGet, "/metrics/prs?owner=owner&repo=repo", nil)
+	req := httptest.NewRequest(nethttp.MethodGet, "/metrics/prs?user=alice", nil)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
 
@@ -146,7 +152,7 @@ func TestRegisterRoutesWithoutBaseClient(t *testing.T) {
 		t.Fatalf("expected unauthorized when token missing, got %d", rec.Code)
 	}
 
-	req = httptest.NewRequest(nethttp.MethodGet, "/metrics/prs?owner=owner&repo=repo", nil)
+	req = httptest.NewRequest(nethttp.MethodGet, "/metrics/prs?user=alice", nil)
 	req.Header.Set("Authorization", "Bearer override-token")
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -157,5 +163,85 @@ func TestRegisterRoutesWithoutBaseClient(t *testing.T) {
 
 	if body := rec.Body.String(); !strings.Contains(body, "Add feature") {
 		t.Fatalf("unexpected body: %s", body)
+	}
+}
+
+func TestConvertClaudePayload(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	payload := claudeMetricsPayload{
+		Timestamp:           now.Format(time.RFC3339),
+		WindowHours:         2,
+		BurnRatePerHour:     1.23,
+		TotalCostUSD:        4.56,
+		InputTokens:         100,
+		OutputTokens:        200,
+		CacheCreationTokens: 10,
+		CacheReadTokens:     20,
+		TotalTokens:         330,
+		SessionCount:        5,
+		ActiveSessionID:     "abc",
+		LastActivity:        now.Format(time.RFC3339),
+		Source:              "local",
+	}
+
+	metrics, err := convertClaudePayload(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if metrics.TotalTokens != payload.TotalTokens {
+		t.Fatalf("unexpected metrics: %+v", metrics)
+	}
+}
+
+func TestClaudeMetricsEndpoints(t *testing.T) {
+	t.Parallel()
+
+	store := claude.NewStore(5)
+	e := echo.New()
+	RegisterRoutes(e, nil, store)
+
+	req := httptest.NewRequest(nethttp.MethodGet, "/metrics/claude", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusNotFound {
+		t.Fatalf("expected 404 when no metrics available, got %d", rec.Code)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	body := strings.NewReader(`{
+                "timestamp": "` + now.Format(time.RFC3339) + `",
+                "window_hours": 1,
+                "burn_rate_per_hour": 2.5,
+                "total_cost_usd": 5.0,
+                "input_tokens": 100,
+                "output_tokens": 200,
+                "cache_creation_tokens": 10,
+                "cache_read_tokens": 20,
+                "total_tokens": 330,
+                "session_count": 4,
+                "active_session_id": "session-1",
+                "last_activity": "` + now.Format(time.RFC3339) + `",
+                "source": "test"
+        }`)
+
+	req = httptest.NewRequest(nethttp.MethodPost, "/metrics/claude", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected success when posting metrics, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(nethttp.MethodGet, "/metrics/claude", nil)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != nethttp.StatusOK {
+		t.Fatalf("expected success fetching metrics, got %d", rec.Code)
 	}
 }
