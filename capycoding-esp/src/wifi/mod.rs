@@ -1,15 +1,24 @@
 use esp_radio::wifi::ScanConfig;
-use reqwless::client::{HttpClient, TlsConfig};
+use reqwless::{
+    client::{HttpClient, TlsConfig},
+    request::RequestBuilder,
+};
 
-
-use embassy_net::{dns::DnsSocket, tcp::client::{TcpClient, TcpClientState}, Config, Runner, Stack, StackResources};
+use embassy_net::{
+    Config, Runner, Stack, StackResources,
+    dns::DnsSocket,
+    tcp::client::{TcpClient, TcpClientState},
+};
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
-use esp_radio::{wifi::{ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState}, Controller};
+use esp_radio::{
+    Controller,
+    wifi::{ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState},
+};
 use log::info;
 
-use crate::CapyConfigHandle;
-use alloc::string::String;
+use crate::{CapyConfigHandle, get_capy_config};
+use alloc::{format, string::String};
 
 const SSID: &str = "Surendra S21";
 const PASSWORD: &str = "Surendra2006";
@@ -20,11 +29,8 @@ mod api;
 pub async fn wifi_task(stack: Stack<'static>, tls_seed: u64) {
     wait_for_connection(stack).await;
 
-
     access_website(stack, tls_seed).await;
-   
 }
-
 
 #[embassy_executor::task]
 pub async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
@@ -35,7 +41,7 @@ pub async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 pub async fn connection(mut controller: WifiController<'static>) {
     info!("start connection task");
     info!("Device capabilities: {:?}", controller.capabilities());
-    
+
     loop {
         if esp_radio::wifi::sta_state() == WifiStaState::Connected {
             // wait until we're no longer connected
@@ -45,7 +51,7 @@ pub async fn connection(mut controller: WifiController<'static>) {
 
         if !matches!(controller.is_started(), Ok(true)) {
             info!("Starting WiFi controller...");
-            
+
             let ssid: String = SSID.into();
             let password: String = PASSWORD.into();
 
@@ -58,7 +64,7 @@ pub async fn connection(mut controller: WifiController<'static>) {
             controller.set_config(&mode_client).unwrap();
             controller.start_async().await.unwrap();
         }
-        
+
         info!("About to connect...");
 
         match controller.connect_async().await {
@@ -69,10 +75,10 @@ pub async fn connection(mut controller: WifiController<'static>) {
             Err(e) => {
                 info!("Failed to connect to wifi: {e:?}");
                 info!("Performing network scan to find available networks...");
-                
+
                 // Perform scan on failure
                 let scan_config = ScanConfig::default();
-                
+
                 match controller.scan_with_config_async(scan_config).await {
                     Ok(scan_results) => {
                         info!("=== WiFi Networks Found ===");
@@ -92,7 +98,7 @@ pub async fn connection(mut controller: WifiController<'static>) {
                         info!("Scan also failed: {:?}", scan_err);
                     }
                 }
-                
+
                 // Wait before retrying connection
                 Timer::after(Duration::from_millis(5000)).await
             }
@@ -119,16 +125,7 @@ async fn wait_for_connection(stack: Stack<'_>) {
     }
 }
 
-async fn access_website(
-    // stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
-    stack: Stack<'_>
-
-//     stack: &Stack<esp_radio::wifi::WifiDevice>,
-    
-
-
-    , tls_seed: u64) {
-
+async fn access_website(stack: Stack<'_>, tls_seed: u64) {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
     let dns = DnsSocket::new(stack);
@@ -142,21 +139,77 @@ async fn access_website(
         reqwless::client::TlsVerify::None,
     );
 
-    let mut client = HttpClient::new_with_tls(&tcp, &dns, tls);
+    let mut client: HttpClient<'_, TcpClient<'_, 1, 4096, 4096>, DnsSocket<'_>> =
+        HttpClient::new_with_tls(&tcp, &dns, tls);
+
     let mut buffer = [0u8; 4096];
+
+    let token = {
+        let config = get_capy_config().lock().await;
+
+        config
+            .as_ref()
+            .and_then(|c| Some(c.api_tokens.github.clone()))
+            .expect("GitHub token not configured")
+    };
+
+    let auth_header = format!("token {}", token);
+
+    let headers = [
+        ("Authorization", auth_header.as_str()),
+        ("User-Agent", "ESP32-Client"),
+    ];
+
     let mut http_req = client
         .request(
             reqwless::request::Method::GET,
-            // "https://jsonplaceholder.typicode.com/posts/1",
-"https://cappycoding.koyeb.app/"
+            "https://cappycoding.koyeb.app/metrics/prs?user=suri-codes&state=open&per_page=3",
         )
         .await
-        .unwrap();
-    let response = http_req.send(&mut buffer).await.unwrap();
+        .unwrap()
+        .headers(&headers);
 
+    let response = http_req.send(&mut buffer).await.unwrap();
     info!("Got response");
     let res = response.body().read_to_end().await.unwrap();
 
     let content = core::str::from_utf8(res).unwrap();
-    info!("{}", content);
+    info!("pr's: {}", content);
+
+    // drop(http_req);
+
+    // info!("making new request");
+    // let mut http_req = client
+    //     .request(
+    //         reqwless::request::Method::GET,
+    //         "http://localhost:8080/metrics/workflows?user=suri-codes&per_page=1",
+    //     )
+    //     .await
+    //     .unwrap()
+    //     .headers(&headers);
+
+    // let response = http_req.send(&mut buffer).await.unwrap();
+    // info!("Got response");
+    // let res = response.body().read_to_end().await.unwrap();
+
+    // let content = core::str::from_utf8(res).unwrap();
+    // info!("workflows: {}", content);
+    drop(http_req);
+
+    info!("making commits request");
+    let mut http_req = client
+        .request(
+            reqwless::request::Method::GET,
+            "http://localhost:8080/metrics/commits?user=suri-codes&since=2025-10-24T00:00:00Z",
+        )
+        .await
+        .unwrap()
+        .headers(&headers);
+
+    let response = http_req.send(&mut buffer).await.unwrap();
+    info!("Got response");
+    let res = response.body().read_to_end().await.unwrap();
+
+    let content = core::str::from_utf8(res).unwrap();
+    info!("commits: {}", content);
 }
