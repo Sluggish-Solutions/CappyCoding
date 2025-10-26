@@ -11,7 +11,7 @@ use tokio::process::Command;
 use crate::types::{
     ClaudeMetricsRequest, ClaudeMetricsSnapshot, ClaudeQuestionRequest, ClaudeQuestionResponse,
     ClaudeUsage, ClaudeVoicePromptRequest, ClaudeVoicePromptResponse, LivekitTokenRequest,
-    LivekitTokenResponse, PushClaudeMetricsRequest,
+    LivekitTokenResponse, LivekitVoiceBridgeRequest, PushClaudeMetricsRequest,
 };
 
 const PYTHON_METRICS_SCRIPT: &str = include_str!("python/collect_metrics.py");
@@ -34,6 +34,10 @@ trait Api {
 
     async fn relay_claude_voice(
         request: ClaudeVoicePromptRequest,
+    ) -> Result<ClaudeVoicePromptResponse, String>;
+
+    async fn bridge_livekit_voice(
+        request: LivekitVoiceBridgeRequest,
     ) -> Result<ClaudeVoicePromptResponse, String>;
 }
 
@@ -108,6 +112,139 @@ struct LivekitClaims {
     #[serde(skip_serializing_if = "Option::is_none")]
     aud: Option<String>,
     video: LivekitVideoGrant,
+}
+
+struct VoiceExchangeRequest<'a> {
+    api_key: &'a str,
+    agent_url: &'a str,
+    audio_base64: &'a str,
+    mime_type: &'a str,
+    agent_id: Option<&'a str>,
+    response_voice: Option<&'a str>,
+    session_id: Option<&'a str>,
+    livekit_room: Option<&'a str>,
+    livekit_identity: Option<&'a str>,
+}
+
+impl ApiImpl {
+    async fn perform_voice_exchange(
+        &self,
+        request: VoiceExchangeRequest<'_>,
+    ) -> Result<ClaudeVoicePromptResponse, String> {
+        if request.api_key.trim().is_empty() {
+            return Err("Claude Agent API key is required".to_string());
+        }
+        if request.agent_url.trim().is_empty() {
+            return Err("Claude Agent base URL is required".to_string());
+        }
+        if request.audio_base64.trim().is_empty() {
+            return Err("Audio payload is required".to_string());
+        }
+        if request.mime_type.trim().is_empty() {
+            return Err("Audio MIME type is required".to_string());
+        }
+
+        let mut url = request.agent_url.trim_end_matches('/').to_string();
+        url.push_str("/v1/voice/exchange");
+
+        let clean_opt = |value: Option<&str>| -> Option<String> {
+            value.and_then(|raw| {
+                let trimmed = raw.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                }
+            })
+        };
+
+        let mut payload = json!({
+            "audio": {
+                "base64": request.audio_base64,
+                "mime_type": request.mime_type,
+            },
+        });
+
+        if let Value::Object(ref mut map) = payload {
+            if let Some(agent_id) = clean_opt(request.agent_id) {
+                map.insert("agent_id".to_string(), Value::String(agent_id));
+            }
+            if let Some(session_id) = clean_opt(request.session_id) {
+                map.insert("session_id".to_string(), Value::String(session_id));
+            }
+            if let Some(voice) = clean_opt(request.response_voice) {
+                map.insert("voice".to_string(), Value::String(voice));
+            }
+
+            let mut metadata = serde_json::Map::new();
+            metadata.insert(
+                "integration".to_string(),
+                Value::String("capycoding-livekit".to_string()),
+            );
+            if let Some(room) = clean_opt(request.livekit_room) {
+                metadata.insert("livekit_room".to_string(), Value::String(room));
+            }
+            if let Some(identity) = clean_opt(request.livekit_identity) {
+                metadata.insert("livekit_identity".to_string(), Value::String(identity));
+            }
+            if metadata.len() > 1 {
+                map.insert("metadata".to_string(), Value::Object(metadata));
+            }
+        }
+
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(request.api_key)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|err| format!("failed to call Claude Agent voice endpoint: {err}"))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!(
+                "Claude Agent voice endpoint error ({status}): {body}"
+            ));
+        }
+
+        let parsed: Value = response
+            .json()
+            .await
+            .map_err(|err| format!("failed to decode Claude Agent voice response: {err}"))?;
+
+        let transcript = parsed
+            .get("transcript")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let reply_text = parsed
+            .pointer("/reply/text")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let reply_audio_base64 = parsed
+            .pointer("/reply/audio/base64")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let reply_audio_mime_type = parsed
+            .pointer("/reply/audio/mime_type")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let session_id = parsed
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+
+        Ok(ClaudeVoicePromptResponse {
+            transcript,
+            reply_text,
+            reply_audio_base64,
+            reply_audio_mime_type,
+            session_id,
+        })
+    }
 }
 
 #[taurpc::resolvers]
@@ -344,116 +481,36 @@ impl Api for ApiImpl {
         self,
         request: ClaudeVoicePromptRequest,
     ) -> Result<ClaudeVoicePromptResponse, String> {
-        if request.api_key.trim().is_empty() {
-            return Err("Claude Agent API key is required".to_string());
-        }
-        if request.agent_url.trim().is_empty() {
-            return Err("Claude Agent base URL is required".to_string());
-        }
-        if request.audio_base64.trim().is_empty() {
-            return Err("Audio payload is required".to_string());
-        }
-        if request.mime_type.trim().is_empty() {
-            return Err("Audio MIME type is required".to_string());
-        }
-
-        let mut url = request.agent_url.trim_end_matches('/').to_string();
-        url.push_str("/v1/voice/exchange");
-
-        let mut payload = json!({
-            "audio": {
-                "base64": request.audio_base64,
-                "mime_type": request.mime_type,
-            },
-        });
-
-        if let Value::Object(ref mut map) = payload {
-            if let Some(agent_id) = request.agent_id.and_then(|id| {
-                let trimmed = id.trim().to_string();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed)
-                }
-            }) {
-                map.insert("agent_id".to_string(), Value::String(agent_id));
-            }
-
-            if let Some(session_id) = request.session_id.and_then(|id| {
-                let trimmed = id.trim().to_string();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed)
-                }
-            }) {
-                map.insert("session_id".to_string(), Value::String(session_id));
-            }
-
-            if let Some(voice) = request.response_voice.and_then(|voice| {
-                let trimmed = voice.trim().to_string();
-                if trimmed.is_empty() {
-                    None
-                } else {
-                    Some(trimmed)
-                }
-            }) {
-                map.insert("voice".to_string(), Value::String(voice));
-            }
-        }
-
-        let response = self
-            .client
-            .post(url)
-            .bearer_auth(&request.api_key)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|err| format!("failed to call Claude Agent voice endpoint: {err}"))?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(format!(
-                "Claude Agent voice endpoint error ({status}): {body}"
-            ));
-        }
-
-        let parsed: Value = response
-            .json()
-            .await
-            .map_err(|err| format!("failed to decode Claude Agent voice response: {err}"))?;
-
-        let transcript = parsed
-            .get("transcript")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let reply_text = parsed
-            .pointer("/reply/text")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let reply_audio_base64 = parsed
-            .pointer("/reply/audio/base64")
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string());
-        let reply_audio_mime_type = parsed
-            .pointer("/reply/audio/mime_type")
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string());
-        let session_id = parsed
-            .get("session_id")
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string());
-
-        Ok(ClaudeVoicePromptResponse {
-            transcript,
-            reply_text,
-            reply_audio_base64,
-            reply_audio_mime_type,
-            session_id,
+        self.perform_voice_exchange(VoiceExchangeRequest {
+            api_key: &request.api_key,
+            agent_url: &request.agent_url,
+            audio_base64: &request.audio_base64,
+            mime_type: &request.mime_type,
+            agent_id: request.agent_id.as_deref(),
+            response_voice: request.response_voice.as_deref(),
+            session_id: request.session_id.as_deref(),
+            livekit_room: None,
+            livekit_identity: None,
         })
+        .await
+    }
+
+    async fn bridge_livekit_voice(
+        self,
+        request: LivekitVoiceBridgeRequest,
+    ) -> Result<ClaudeVoicePromptResponse, String> {
+        self.perform_voice_exchange(VoiceExchangeRequest {
+            api_key: &request.api_key,
+            agent_url: &request.agent_url,
+            audio_base64: &request.audio_base64,
+            mime_type: &request.mime_type,
+            agent_id: request.agent_id.as_deref(),
+            response_voice: request.response_voice.as_deref(),
+            session_id: request.session_id.as_deref(),
+            livekit_room: request.room_name.as_deref(),
+            livekit_identity: request.participant_identity.as_deref(),
+        })
+        .await
     }
 }
 
