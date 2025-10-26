@@ -2,13 +2,24 @@
         import { onDestroy, onMount } from 'svelte'
         import { get, writable } from 'svelte/store'
         import '@livekit/components-styles'
-import { createMediaDeviceObserver } from '@livekit/components-core'
-import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
+        import {
+                createMediaDeviceObserver,
+                setupDeviceSelector,
+                setupLiveKitRoom,
+                setupStartAudio,
+        } from '@livekit/components-core'
+        import type { Subscription } from 'rxjs'
+        import {
+                Room,
+                RoomEvent,
+                Track,
+                type LocalAudioTrack,
+                type RemoteParticipant,
+                type RemoteTrackPublication,
+        } from 'livekit-client'
         import { taurpc } from '$lib/tauri'
-        import type {
-                ClaudeVoicePromptResponse,
-                LivekitTokenResponse,
-        } from '../../types'
+        import RemoteAudioTile from './RemoteAudioTile.svelte'
+        import type { ClaudeVoicePromptResponse, LivekitTokenResponse } from '../../types'
 
         export let serverUrl = ''
         export let apiKey = ''
@@ -27,6 +38,19 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
         export let agentId = ''
         export let agentVoice = ''
 
+        type RemoteAudioEntry = {
+                id: string
+                participant: RemoteParticipant
+                publication: RemoteTrackPublication
+        }
+
+        const { className: roomContainerClass } = setupLiveKitRoom()
+        const {
+                className: startAudioClass,
+                roomAudioPlaybackAllowedObservable,
+                handleStartAudioPlayback,
+        } = setupStartAudio()
+
         const connectionState = writable<'idle' | 'connecting' | 'connected'>('idle')
         const sessionError = writable('')
         const promptError = writable('')
@@ -36,19 +60,22 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
         const transcript = writable('')
         const replyText = writable('')
         const replyAudioUrl = writable('')
-        const sessionId = writable('')
         const recordedAudioUrl = writable('')
+        const sessionId = writable('')
         const microphones = writable<MediaDeviceInfo[]>([])
         const selectedMicrophone = writable('')
-        const remoteAudioTracks = writable<
-                { id: string; participant: string; identity: string; track: RemoteAudioTrack }[]
-        >([])
+        const remoteAudioPublications = writable<RemoteAudioEntry[]>([])
+        const deviceSelectClass = writable('lk-media-device-select')
+        const playbackRequiresInteraction = writable(false)
 
         let room: Room | null = null
         let recorder: MediaRecorder | null = null
         let recorderStream: MediaStream | null = null
         let recorderChunks: Blob[] = []
         let mediaObserver: { unsubscribe: () => void } | null = null
+        let playbackSubscription: Subscription | null = null
+        let micSelector: ReturnType<typeof setupDeviceSelector> | null = null
+        let micSelectorSubscription: Subscription | null = null
 
         // @ts-expect-error TauRPC namespaces are keyed by an empty string
         const rpc = taurpc['']
@@ -66,15 +93,17 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                 }
         }
 
-        function clearRemoteAudioTracks() {
-                remoteAudioTracks.update((tracks) => {
-                        tracks.forEach((entry) => entry.track.detach())
-                        return []
-                })
+        function clearRemoteAudioPublications() {
+                remoteAudioPublications.set([])
         }
 
         function cleanupRoom() {
-                clearRemoteAudioTracks()
+                clearRemoteAudioPublications()
+                micSelectorSubscription?.unsubscribe()
+                micSelectorSubscription = null
+                micSelector = null
+                playbackSubscription?.unsubscribe()
+                playbackSubscription = null
                 if (room) {
                         room.removeAllListeners()
                         room = null
@@ -103,6 +132,29 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                 }
         }
 
+        function observePlayback(activeRoom: Room) {
+                playbackSubscription?.unsubscribe()
+                playbackSubscription = roomAudioPlaybackAllowedObservable(activeRoom).subscribe(
+                        ({ canPlayAudio }) => {
+                                playbackRequiresInteraction.set(!canPlayAudio)
+                        },
+                )
+        }
+
+        function configureDeviceSelector(activeRoom: Room) {
+                micSelectorSubscription?.unsubscribe()
+                const track = activeRoom.localParticipant
+                        .getTrackPublication(Track.Source.Microphone)
+                        ?.track as LocalAudioTrack | undefined
+                micSelector = setupDeviceSelector('audioinput', activeRoom, track)
+                deviceSelectClass.set(micSelector.className)
+                micSelectorSubscription = micSelector.activeDeviceObservable.subscribe((deviceId) => {
+                        if (deviceId) {
+                                selectedMicrophone.set(deviceId)
+                        }
+                })
+        }
+
         function registerRoomListeners(activeRoom: Room) {
                 activeRoom.on(RoomEvent.ConnectionStateChanged, (state) => {
                         if (state === 'connected') {
@@ -117,54 +169,46 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
 
                 activeRoom.on(RoomEvent.Disconnected, () => {
                         connectionState.set('idle')
+                        playbackRequiresInteraction.set(false)
                         cleanupRoom()
                 })
 
                 activeRoom.on(RoomEvent.TrackSubscribed, (track, publication, participant) => {
                         if (track.kind === Track.Kind.Audio) {
+                                const remoteParticipant = participant as RemoteParticipant
+                                const remotePublication = publication as RemoteTrackPublication
                                 const publicationSid =
-                                        publication.trackSid ??
-                                        (track as RemoteAudioTrack).sid ??
-                                        `${participant.identity}-${Math.random().toString(36).slice(2)}`
-                                remoteAudioTracks.update((tracks) => {
-                                        if (tracks.some((entry) => entry.id === publicationSid)) {
-                                                return tracks
+                                        remotePublication.trackSid ||
+                                        `${remoteParticipant.identity}-${Math.random().toString(36).slice(2)}`
+                                remoteAudioPublications.update((entries) => {
+                                        if (entries.some((entry) => entry.id === publicationSid)) {
+                                                return entries
                                         }
                                         return [
-                                                ...tracks,
+                                                ...entries,
                                                 {
                                                         id: publicationSid,
-                                                        participant: participant.name ?? participant.identity,
-                                                        identity: participant.identity,
-                                                        track: track as RemoteAudioTrack,
+                                                        participant: remoteParticipant,
+                                                        publication: remotePublication,
                                                 },
                                         ]
                                 })
                         }
                 })
 
-                activeRoom.on(RoomEvent.TrackUnsubscribed, (_, publication, participant) => {
-                        const publicationSid = publication.trackSid
-                        remoteAudioTracks.update((tracks) => {
-                                return tracks.filter((entry) => {
-                                        const matchesPublication = publicationSid && entry.id === publicationSid
-                                        const matchesIdentity = !publicationSid && entry.identity === participant.identity
-                                        if (matchesPublication || matchesIdentity) {
-                                                entry.track.detach()
-                                                return false
-                                        }
-                                        return true
-                                })
-                        })
+                activeRoom.on(RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                        if (track?.kind === Track.Kind.Audio) {
+                                const publicationSid = publication.trackSid
+                                remoteAudioPublications.update((entries) =>
+                                        entries.filter((entry) => entry.id !== publicationSid),
+                                )
+                        }
                 })
 
                 activeRoom.on(RoomEvent.ParticipantDisconnected, (participant) => {
-                        remoteAudioTracks.update((tracks) => {
-                                tracks
-                                        .filter((entry) => entry.identity === participant.identity)
-                                        .forEach((entry) => entry.track.detach())
-                                return tracks.filter((entry) => entry.identity !== participant.identity)
-                        })
+                        remoteAudioPublications.update((entries) =>
+                                entries.filter((entry) => entry.participant.identity !== participant.identity),
+                        )
                 })
         }
 
@@ -179,6 +223,18 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                 if (!apiKey.trim() || !apiSecret.trim() || !identity.trim() || !roomName.trim()) {
                         sessionError.set(
                                 'LiveKit API key, secret, identity, and room are required to join the session.',
+                        )
+                        return
+                }
+
+                try {
+                        const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+                        permissionStream.getTracks().forEach((mediaTrack) => mediaTrack.stop())
+                } catch (error) {
+                        sessionError.set(
+                                error instanceof Error
+                                        ? `Microphone permission denied: ${error.message}`
+                                        : `Microphone permission denied: ${String(error)}`,
                         )
                         return
                 }
@@ -198,6 +254,8 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                         audioCaptureDefaults: audioDevice
                                 ? {
                                           deviceId: audioDevice,
+                                          echoCancellation: true,
+                                          noiseSuppression: true,
                                   }
                                 : undefined,
                 })
@@ -206,8 +264,21 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
 
                 try {
                         await nextRoom.connect(serverUrl, tokenResult.token)
-                        await nextRoom.startAudio()
-                        await nextRoom.localParticipant.setMicrophoneEnabled(true)
+                        observePlayback(nextRoom)
+                        try {
+                                await nextRoom.startAudio()
+                        } catch (error) {
+                                console.warn('Automatic audio start failed', error)
+                        }
+                        const micDevice = get(selectedMicrophone)
+                        try {
+                                await nextRoom.localParticipant.setMicrophoneEnabled(true, {
+                                        deviceId: micDevice || undefined,
+                                })
+                        } catch (error) {
+                                console.warn('failed to enable microphone', error)
+                        }
+                        configureDeviceSelector(nextRoom)
                         connectionState.set('connected')
                         sessionError.set('')
                 } catch (error) {
@@ -230,32 +301,34 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                 } catch (error) {
                         console.warn('failed to disconnect LiveKit room', error)
                 }
+                playbackRequiresInteraction.set(false)
                 cleanupRoom()
                 connectionState.set('idle')
         }
 
-        function attachAudio(node: HTMLAudioElement, track: RemoteAudioTrack | null) {
-                let currentTrack: RemoteAudioTrack | null = track
-                if (currentTrack) {
-                        currentTrack.attach(node)
+        async function handleStartAudio() {
+                if (!room) return
+                try {
+                        await handleStartAudioPlayback(room)
+                } catch (error) {
+                        sessionError.set(error instanceof Error ? error.message : String(error))
                 }
-                node.autoplay = true
-                node.setAttribute('playsinline', 'true')
-                return {
-                        update(newTrack: RemoteAudioTrack | null) {
-                                if (currentTrack && currentTrack !== newTrack) {
-                                        currentTrack.detach(node)
-                                }
-                                currentTrack = newTrack
-                                if (currentTrack) {
-                                        currentTrack.attach(node)
-                                }
-                        },
-                        destroy() {
-                                if (currentTrack) {
-                                        currentTrack.detach(node)
-                                }
-                        },
+        }
+
+        async function onMicrophoneChange(event: Event) {
+                const target = event.currentTarget as HTMLSelectElement
+                const deviceId = target.value
+                selectedMicrophone.set(deviceId)
+                if (micSelector) {
+                        try {
+                                await micSelector.setActiveMediaDevice(deviceId, { exact: true })
+                        } catch (error) {
+                                sessionError.set(
+                                        error instanceof Error
+                                                ? `Failed to switch microphone: ${error.message}`
+                                                : `Failed to switch microphone: ${String(error)}`,
+                                )
+                        }
                 }
         }
 
@@ -334,7 +407,7 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                         const activeRoom = room
                         const lkRoomName = activeRoom?.name ?? null
                         const lkIdentity = activeRoom?.localParticipant?.identity ?? null
-                        const response: ClaudeVoicePromptResponse = await rpc.bridge_livekit_voice({
+                        const response: ClaudeVoicePromptResponse = await rpc.relay_livekit_audio({
                                 api_key: agentApiKey,
                                 agent_url: agentUrl,
                                 audio_base64: base64,
@@ -357,7 +430,8 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                                         response.reply_audio_base64,
                                         response.reply_audio_mime_type,
                                 )
-                                replyAudioUrl.set(URL.createObjectURL(replyBlob))
+                                const replyUrl = URL.createObjectURL(replyBlob)
+                                replyAudioUrl.set(replyUrl)
                                 if (activeRoom) {
                                         await publishReplyToRoom(activeRoom, replyBlob)
                                 }
@@ -442,8 +516,8 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                                 typeof navigator.mediaDevices !== 'undefined' &&
                                 typeof navigator.mediaDevices.getUserMedia === 'function' &&
                                 typeof window !== 'undefined' &&
-                                typeof (window as typeof window & { MediaRecorder?: typeof MediaRecorder })
-                                        .MediaRecorder !== 'undefined'
+                                typeof (window as typeof window & { MediaRecorder?: typeof MediaRecorder }).MediaRecorder !==
+                                        'undefined'
                 } catch (error) {
                         console.warn('MediaRecorder detection failed', error)
                 }
@@ -461,6 +535,10 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                 return () => {
                         mediaObserver?.unsubscribe()
                         mediaObserver = null
+                        playbackSubscription?.unsubscribe()
+                        playbackSubscription = null
+                        micSelectorSubscription?.unsubscribe()
+                        micSelectorSubscription = null
                         void disconnectRoom(true)
                         resetPromptArtifacts()
                 }
@@ -469,12 +547,16 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
         onDestroy(() => {
                 mediaObserver?.unsubscribe()
                 mediaObserver = null
+                playbackSubscription?.unsubscribe()
+                playbackSubscription = null
+                micSelectorSubscription?.unsubscribe()
+                micSelectorSubscription = null
                 void disconnectRoom(true)
                 resetPromptArtifacts()
         })
 </script>
 
-<div class="voice-console">
+<div class={`voice-console ${roomContainerClass}`}>
         <div class="console-header">
                 <div>
                         <span class="status-label">Connection</span>
@@ -491,7 +573,12 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                         {#if $microphones.length === 0}
                                 <span class="muted">No input devices</span>
                         {:else}
-                                <select bind:value={$selectedMicrophone}>
+                                <select
+                                        class={$deviceSelectClass}
+                                        bind:value={$selectedMicrophone}
+                                        on:change={onMicrophoneChange}
+                                        disabled={$connectionState === 'connecting'}
+                                >
                                         {#each $microphones as device}
                                                 <option value={device.deviceId}>{device.label || 'Microphone'}</option>
                                         {/each}
@@ -514,45 +601,48 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                         {/if}
                 </button>
                 <button
+                        class={startAudioClass}
+                        on:click={handleStartAudio}
+                        disabled={!$playbackRequiresInteraction || $connectionState !== 'connected'}
+                >
+                        Enable room audio
+                </button>
+                <button
                         on:click={$isRecording ? stopRecording : startRecording}
                         disabled={$connectionState !== 'connected' || !$recordingSupported || $promptLoading}
                 >
                         {#if $promptLoading}
                                 Processing…
                         {:else if $isRecording}
-                                Stop recording
+                                Stop & submit
                         {:else}
-                                Start voice prompt
+                                Record voice prompt
                         {/if}
                 </button>
         </div>
 
         {#if !$recordingSupported}
                 <p class="warning">
-                        This environment does not support microphone recording via the MediaRecorder API.
+                        Voice dictation requires a browser with MediaRecorder support. Please switch to a compatible browser.
                 </p>
         {/if}
 
         {#if $sessionError}
                 <p class="error">{$sessionError}</p>
         {/if}
+
         {#if $promptError}
                 <p class="error">{$promptError}</p>
         {/if}
 
-        <div class="voice-room-preview" aria-live="polite">
-                <h3>Remote audio</h3>
-                {#if $remoteAudioTracks.length === 0}
-                        <p class="muted">No remote audio tracks are active yet.</p>
-                {:else}
-                        {#each $remoteAudioTracks as remote (remote.id)}
-                                <div class="remote-audio-item">
-                                        <strong>{remote.participant}</strong>
-                                        <audio use:attachAudio={remote.track} controls autoplay playsinline></audio>
-                                </div>
+        {#if $remoteAudioPublications.length > 0}
+                <div class="voice-room-preview">
+                        <h3>Remote replies</h3>
+                        {#each $remoteAudioPublications as remote (remote.id)}
+                                <RemoteAudioTile participant={remote.participant} publication={remote.publication} />
                         {/each}
-                {/if}
-        </div>
+                </div>
+        {/if}
 
         {#if $recordedAudioUrl}
                 <div class="voice-preview">
@@ -662,10 +752,9 @@ import { Room, RoomEvent, Track, type RemoteAudioTrack } from 'livekit-client'
                 border: 1px solid rgba(148, 163, 184, 0.12);
         }
 
-        .remote-audio-item {
+        .voice-room-preview {
                 display: grid;
-                gap: 0.5rem;
-                margin-bottom: 1rem;
+                gap: 1rem;
         }
 
         audio {
