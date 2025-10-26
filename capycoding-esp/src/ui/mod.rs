@@ -5,8 +5,6 @@ use ratatui::{
     widgets::{Block, Paragraph, Wrap},
 };
 
-use crate::CapyConfigHandle;
-
 /// The root of the widget tree that draws everything else;
 pub fn root_draw(
     frame: &mut Frame,

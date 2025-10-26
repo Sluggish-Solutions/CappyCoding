@@ -8,10 +8,9 @@
 
 use capycoding_esp::ble::ble_task;
 use capycoding_esp::wifi::{connection, net_task, wifi_task};
-use capycoding_esp::{CapyConfig, WeactTermInitPins, init_capy_config, ui_task};
+use capycoding_esp::{WeactTermInitPins, init_capy_config, ui_task};
 use embassy_executor::Spawner;
 use embassy_net::{DhcpConfig, StackResources};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use esp_hal::clock::CpuClock;
 use esp_hal::rng::Rng;
 use esp_hal::spi::{self, master::Spi};
@@ -27,8 +26,6 @@ use static_cell::StaticCell;
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
-
-use embassy_sync::mutex::Mutex;
 
 static RADIO: StaticCell<esp_radio::Controller<'static>> = StaticCell::new();
 

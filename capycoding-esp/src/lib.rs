@@ -29,9 +29,6 @@ pub struct AppState {
     // Add your fields here
 }
 
-// Global singleton
-static STATE: OnceCell<Mutex<CriticalSectionRawMutex, AppState>> = OnceCell::new();
-
 static CONFIG: OnceCell<Mutex<CriticalSectionRawMutex, Option<CapyConfig>>> = OnceCell::new();
 
 // Initialize the singleton (call once at startup)

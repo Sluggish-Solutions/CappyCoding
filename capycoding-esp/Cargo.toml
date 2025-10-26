@@ -106,6 +106,7 @@ embassy-futures = "0.1.2"
 
 ble-types = {path = "../ble-types"}
 once_cell = {version="1.21.3", default-features = false, features = [ "critical-section"]}
+microjson = "0.1.6"
 
 [patch.crates-io]
 ratatui = { git = "https://github.com/suri-codes/ratatui.git", branch = "main" }

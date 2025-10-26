@@ -11,7 +11,7 @@ use embassy_futures::select::select;
 #[allow(unused_imports)]
 use trouble_host::prelude::*;
 
-use crate::{CapyConfig, CapyConfigHandle, get_capy_config};
+use crate::{CapyConfig, get_capy_config};
 
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 1;
@@ -30,7 +30,7 @@ struct ConfigService {
     wifi_password: heapless::Vec<u8, 30>,
 
     #[characteristic(uuid = ble_types::GITHUB_TOKEN_CHARACTERISTIC, write, read, notify)]
-    github_token: heapless::Vec<u8, 30>,
+    github_token: heapless::Vec<u8, 50>,
 }
 
 #[embassy_executor::task]
@@ -223,7 +223,7 @@ async fn advertise<'values, 'server, C: Controller>(
 /// It will also read the RSSI value every 2 seconds.
 /// and will stop when the connection is closed by the central or an error occurs.
 async fn custom_task<C: Controller, P: PacketPool>(
-    server: &Server<'_>,
+    _server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
     stack: &Stack<'_, C, P>,
 ) {

@@ -1,20 +1,17 @@
+use ble_types::{Tokens, WifiCredentials};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embedded_storage::{ReadStorage, nor_flash::NorFlash, nor_flash::check_write};
 use esp_bootloader_esp_idf::partitions::{self, PartitionEntry};
 use esp_storage::FlashStorage;
-use heapless::String;
 use log::{error, info};
 use serde::{Deserialize, Serialize};
-use static_cell::StaticCell;
-use ble_types::{WifiCredentials, Tokens};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct CapyConfig {
     pub api_tokens: Tokens,
     pub wifi_credentials: WifiCredentials,
 }
-
 
 pub type CapyConfigHandle = &'static Mutex<CriticalSectionRawMutex, Option<CapyConfig>>;
 impl CapyConfig {

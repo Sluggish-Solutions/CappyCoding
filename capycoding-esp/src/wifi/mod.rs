@@ -1,24 +1,21 @@
 use esp_radio::wifi::ScanConfig;
+use microjson::JSONValue;
 use reqwless::{
     client::{HttpClient, TlsConfig},
     request::RequestBuilder,
 };
 
 use embassy_net::{
-    Config, Runner, Stack, StackResources,
+    Runner, Stack,
     dns::DnsSocket,
     tcp::client::{TcpClient, TcpClientState},
 };
 use embassy_time::{Duration, Timer};
-use esp_hal::peripherals;
-use esp_radio::{
-    Controller,
-    wifi::{ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState},
-};
+use esp_radio::wifi::{ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState};
 use log::info;
 
-use crate::{CapyConfigHandle, get_capy_config};
-use alloc::{format, string::String};
+use crate::get_capy_config;
+use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 
 const SSID: &str = "Surendra S21";
 const PASSWORD: &str = "Surendra2006";
@@ -158,18 +155,6 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
             }
         }
     };
-    // let token = {
-    //     while let (config) = get_capy_config().lock().await {
-    //         Timer::after(Duration::from_millis(500)).await;
-    //     }
-
-    //     let config = get_capy_config().lock().await;
-
-    //     config
-    //         .as_ref()
-    //         .and_then(|c| Some(c.api_tokens.github.clone()))
-    //         .expect("GitHub token not configured")
-    // };
 
     let auth_header = format!("token {}", token);
 
@@ -181,7 +166,7 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
     let mut http_req = client
         .request(
             reqwless::request::Method::GET,
-            "https://cappycoding.koyeb.app/metrics/prs?user=suri-codes&state=open&per_page=3",
+            "https://cappycoding.koyeb.app/metrics/prs?user=suri-codes&state=open&per_page=5",
         )
         .await
         .unwrap()
@@ -192,33 +177,38 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
     let res = response.body().read_to_end().await.unwrap();
 
     let content = core::str::from_utf8(res).unwrap();
-    info!("pr's: {}", content);
 
-    // drop(http_req);
+    let prs = parse_pull_requests(content);
+    info!("pr's: {:#?}", prs);
 
-    // info!("making new request");
-    // let mut http_req = client
-    //     .request(
-    //         reqwless::request::Method::GET,
-    //         "http://localhost:8080/metrics/workflows?user=suri-codes&per_page=1",
-    //     )
-    //     .await
-    //     .unwrap()
-    //     .headers(&headers);
+    drop(http_req);
 
-    // let response = http_req.send(&mut buffer).await.unwrap();
-    // info!("Got response");
-    // let res = response.body().read_to_end().await.unwrap();
+    info!("making new request");
+    let mut http_req = client
+        .request(
+            reqwless::request::Method::GET,
+            "https://cappycoding.koyeb.app/metrics/workflows?user=suri-codes&per_page=5",
+        )
+        .await
+        .unwrap()
+        .headers(&headers);
 
-    // let content = core::str::from_utf8(res).unwrap();
-    // info!("workflows: {}", content);
+    let response = http_req.send(&mut buffer).await.unwrap();
+    info!("Got response");
+    let res = response.body().read_to_end().await.unwrap();
+
+    let content = core::str::from_utf8(res).unwrap();
+
+    let workflows = parse_workflows(content);
+    info!("workflows: {:#?}", workflows);
     drop(http_req);
 
     info!("making commits request");
     let mut http_req = client
         .request(
             reqwless::request::Method::GET,
-            "http://localhost:8080/metrics/commits?user=suri-codes&since=2025-10-24T00:00:00Z",
+            // "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes&since=2025-10-24T00:00:00Z",
+            "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes",
         )
         .await
         .unwrap()
@@ -229,5 +219,148 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
     let res = response.body().read_to_end().await.unwrap();
 
     let content = core::str::from_utf8(res).unwrap();
-    info!("commits: {}", content);
+
+    let commit_data = parse_commits(content);
+    info!("commits: {:#?}", commit_data);
+}
+
+#[derive(Debug)]
+pub struct CommitData {
+    pub total: u32,
+}
+
+fn parse_commits(buffer: &str) -> CommitData {
+    let json = JSONValue::load(buffer);
+    let x = json.get_key_value("total").unwrap().read_integer().unwrap();
+
+    CommitData { total: x as u32 }
+}
+
+#[derive(Debug)]
+pub struct WorkflowData {
+    pub name: String,
+    pub status: String,
+    pub conclusion: String,
+    pub html_url: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn parse_workflows(buffer: &str) -> Vec<WorkflowData> {
+    let json = JSONValue::load(buffer);
+    let workflows_array = json.iter_array().unwrap();
+
+    let mut workflows = Vec::new();
+
+    for workflow in workflows_array {
+        let name = workflow
+            .get_key_value("name")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let status = workflow
+            .get_key_value("status")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let conclusion = workflow
+            .get_key_value("conclusion")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let html_url = workflow
+            .get_key_value("htmlUrl")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let created_at = workflow
+            .get_key_value("createdAt")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let updated_at = workflow
+            .get_key_value("updatedAt")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+
+        workflows.push(WorkflowData {
+            name,
+            status,
+            conclusion,
+            html_url,
+            created_at,
+            updated_at,
+        });
+    }
+
+    workflows
+}
+
+#[derive(Debug)]
+struct PullRequestData {
+    pub number: u32,
+    pub title: String,
+    pub state: String,
+    pub url: String,
+    pub updated_at: String,
+    pub author: String,
+}
+
+fn parse_pull_requests(buffer: &str) -> Vec<PullRequestData> {
+    let json = JSONValue::load(buffer);
+    let prs_array = json.iter_array().unwrap();
+
+    let mut prs = Vec::new();
+
+    for pr in prs_array {
+        let number = pr.get_key_value("number").unwrap().read_integer().unwrap() as u32;
+        let title = pr
+            .get_key_value("title")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let state = pr
+            .get_key_value("state")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let url = pr
+            .get_key_value("url")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let updated_at = pr
+            .get_key_value("updatedAt")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+        let author = pr
+            .get_key_value("author")
+            .unwrap()
+            .read_string()
+            .unwrap()
+            .to_owned();
+
+        prs.push(PullRequestData {
+            number,
+            title,
+            state,
+            url,
+            updated_at,
+            author,
+        });
+    }
+
+    prs
 }
