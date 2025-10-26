@@ -180,11 +180,11 @@ impl Api for ApiImpl {
             window_hours: parsed.window_hours,
             burn_rate_per_hour: parsed.burn_rate_per_hour,
             total_cost_usd: parsed.total_cost_usd,
-            input_tokens: parsed.input_tokens,
-            output_tokens: parsed.output_tokens,
-            cache_creation_tokens: parsed.cache_creation_tokens,
-            cache_read_tokens: parsed.cache_read_tokens,
-            total_tokens: parsed.total_tokens,
+            input_tokens: parsed.input_tokens as i32,
+            output_tokens: parsed.output_tokens as i32,
+            cache_creation_tokens: parsed.cache_creation_tokens as i32,
+            cache_read_tokens: parsed.cache_read_tokens as i32,
+            total_tokens: parsed.total_tokens as i32,
             session_count: parsed.session_count,
             active_session_id: parsed.active_session_id,
             last_activity: parsed.last_activity.to_rfc3339(),
@@ -538,7 +538,7 @@ impl Api for ApiImpl {
 
         let now = Utc::now();
         let expires_at = now
-            .checked_add_signed(TimeDelta::seconds(ttl))
+            .checked_add_signed(TimeDelta::seconds(ttl as i64))
             .ok_or_else(|| "ttl results in overflow".to_string())?;
 
         let grant = LivekitVideoGrant {
