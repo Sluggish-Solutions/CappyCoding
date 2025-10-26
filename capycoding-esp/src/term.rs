@@ -19,7 +19,10 @@ use esp_hal::{
     spi::master::Spi,
 };
 
-use crate::{get_capy_config, ui::root_draw};
+use crate::{
+    get_capy_config,
+    ui::{get_capy_state, root_draw},
+};
 
 pub type CapyDisplay = Display<128, 296, 4736, weact_studio_epd::Color>;
 
@@ -76,13 +79,14 @@ pub async fn ui_task(spi: Spi<'static, Blocking>, term_init_pins: WeactTermInitP
     let mut term = setup_weact_term(spi, &mut display, term_init_pins);
     loop {
         let config = get_capy_config().lock().await;
+        let state = get_capy_state().lock().await;
         // let config: embassy_sync::mutex::MutexGuard<
         //     '_,
         //     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         //     Option<crate::CapyConfig>,
         // > = config_ref.lock().await;
 
-        term.draw(|f| root_draw(f, config)).unwrap();
+        term.draw(|f| root_draw(f, config, state)).unwrap();
         Timer::after_millis(5).await;
     }
 }

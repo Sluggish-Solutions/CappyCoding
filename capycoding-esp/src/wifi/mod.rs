@@ -14,7 +14,10 @@ use embassy_time::{Duration, Timer};
 use esp_radio::wifi::{ModeConfig, WifiController, WifiDevice, WifiEvent, WifiStaState};
 use log::info;
 
-use crate::get_capy_config;
+use crate::{
+    get_capy_config,
+    ui::{CapyState, get_capy_state},
+};
 use alloc::{borrow::ToOwned, format, string::String, vec::Vec};
 
 const SSID: &str = "Surendra S21";
@@ -141,87 +144,99 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
 
     let mut buffer = [0u8; 4096];
 
-    let token = loop {
-        let config = get_capy_config().lock().await;
+    loop {
+        let token = loop {
+            let config = get_capy_config().lock().await;
 
-        match config
-            .as_ref()
-            .and_then(|c| Some(c.api_tokens.github.clone()))
-        {
-            Some(token) => break token.clone(),
-            None => {
-                info!("Waiting for github token!");
-                Timer::after(Duration::from_millis(500)).await
+            match config
+                .as_ref()
+                .and_then(|c| Some(c.api_tokens.github.clone()))
+            {
+                Some(token) => break token.clone(),
+                None => {
+                    info!("Waiting for github token!");
+                    Timer::after(Duration::from_millis(500)).await
+                }
             }
-        }
-    };
+        };
 
-    let auth_header = format!("token {}", token);
+        let auth_header = format!("token {}", token);
 
-    let headers = [
-        ("Authorization", auth_header.as_str()),
-        ("User-Agent", "ESP32-Client"),
-    ];
+        let headers = [
+            ("Authorization", auth_header.as_str()),
+            ("User-Agent", "ESP32-Client"),
+        ];
 
-    let mut http_req = client
-        .request(
-            reqwless::request::Method::GET,
-            "https://cappycoding.koyeb.app/metrics/prs?user=suri-codes&state=open&per_page=5",
-        )
-        .await
-        .unwrap()
-        .headers(&headers);
+        let mut http_req = client
+            .request(
+                reqwless::request::Method::GET,
+                "https://cappycoding.koyeb.app/metrics/prs?user=suri-codes&state=open&per_page=5",
+            )
+            .await
+            .unwrap()
+            .headers(&headers);
 
-    let response = http_req.send(&mut buffer).await.unwrap();
-    info!("Got response");
-    let res = response.body().read_to_end().await.unwrap();
+        let response = http_req.send(&mut buffer).await.unwrap();
+        info!("Got response");
+        let res = response.body().read_to_end().await.unwrap();
 
-    let content = core::str::from_utf8(res).unwrap();
+        let content = core::str::from_utf8(res).unwrap();
 
-    let prs = parse_pull_requests(content);
-    info!("pr's: {:#?}", prs);
+        let prs = parse_pull_requests(content);
+        info!("pr's: {:#?}", prs);
 
-    drop(http_req);
+        drop(http_req);
 
-    info!("making new request");
-    let mut http_req = client
-        .request(
-            reqwless::request::Method::GET,
-            "https://cappycoding.koyeb.app/metrics/workflows?user=suri-codes&per_page=5",
-        )
-        .await
-        .unwrap()
-        .headers(&headers);
+        info!("making new request");
+        let mut http_req = client
+            .request(
+                reqwless::request::Method::GET,
+                "https://cappycoding.koyeb.app/metrics/workflows?user=suri-codes&per_page=5",
+            )
+            .await
+            .unwrap()
+            .headers(&headers);
 
-    let response = http_req.send(&mut buffer).await.unwrap();
-    info!("Got response");
-    let res = response.body().read_to_end().await.unwrap();
+        let response = http_req.send(&mut buffer).await.unwrap();
+        info!("Got response");
+        let res = response.body().read_to_end().await.unwrap();
 
-    let content = core::str::from_utf8(res).unwrap();
+        let content = core::str::from_utf8(res).unwrap();
 
-    let workflows = parse_workflows(content);
-    info!("workflows: {:#?}", workflows);
-    drop(http_req);
+        let workflows = parse_workflows(content);
+        info!("workflows: {:#?}", workflows);
+        drop(http_req);
 
-    info!("making commits request");
-    let mut http_req = client
-        .request(
-            reqwless::request::Method::GET,
-            // "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes&since=2025-10-24T00:00:00Z",
-            "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes",
-        )
-        .await
-        .unwrap()
-        .headers(&headers);
+        info!("making commits request");
+        let mut http_req = client
+            .request(
+                reqwless::request::Method::GET,
+                // "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes&since=2025-10-24T00:00:00Z",
+                "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes",
+            )
+            .await
+            .unwrap()
+            .headers(&headers);
 
-    let response = http_req.send(&mut buffer).await.unwrap();
-    info!("Got response");
-    let res = response.body().read_to_end().await.unwrap();
+        let response = http_req.send(&mut buffer).await.unwrap();
+        info!("Got response");
+        let res = response.body().read_to_end().await.unwrap();
 
-    let content = core::str::from_utf8(res).unwrap();
+        let content = core::str::from_utf8(res).unwrap();
 
-    let commit_data = parse_commits(content);
-    info!("commits: {:#?}", commit_data);
+        let commit_data = parse_commits(content);
+        info!("commits: {:#?}", commit_data);
+
+        let mut state = get_capy_state().lock().await;
+
+        *state = Some(CapyState {
+            commits: commit_data,
+            pr: prs,
+            workflow: workflows,
+        });
+
+        Timer::after_secs(60).await;
+    }
 }
 
 #[derive(Debug)]
@@ -304,7 +319,7 @@ fn parse_workflows(buffer: &str) -> Vec<WorkflowData> {
 }
 
 #[derive(Debug)]
-struct PullRequestData {
+pub struct PullRequestData {
     pub number: u32,
     pub title: String,
     pub state: String,

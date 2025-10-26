@@ -7,6 +7,7 @@
 )]
 
 use capycoding_esp::ble::ble_task;
+use capycoding_esp::ui::init_capy_state;
 use capycoding_esp::wifi::{connection, net_task, wifi_task};
 use capycoding_esp::{WeactTermInitPins, init_capy_config, ui_task};
 use embassy_executor::Spawner;
@@ -105,6 +106,7 @@ async fn main(spawner: Spawner) -> () {
         mk_static!(StackResources<3>, StackResources::<3>::new()),
         net_seed,
     );
+    init_capy_state();
 
     // BLE handler
     spawner.spawn(ble_task(radio, peripherals.BT)).unwrap();
