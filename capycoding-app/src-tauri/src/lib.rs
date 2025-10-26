@@ -36,6 +36,10 @@ trait Api {
         request: ClaudeVoicePromptRequest,
     ) -> Result<ClaudeVoicePromptResponse, String>;
 
+    async fn relay_livekit_audio(
+        request: LivekitVoiceBridgeRequest,
+    ) -> Result<ClaudeVoicePromptResponse, String>;
+
     async fn bridge_livekit_voice(
         request: LivekitVoiceBridgeRequest,
     ) -> Result<ClaudeVoicePromptResponse, String>;
@@ -495,7 +499,7 @@ impl Api for ApiImpl {
         .await
     }
 
-    async fn bridge_livekit_voice(
+    async fn relay_livekit_audio(
         self,
         request: LivekitVoiceBridgeRequest,
     ) -> Result<ClaudeVoicePromptResponse, String> {
@@ -511,6 +515,13 @@ impl Api for ApiImpl {
             livekit_identity: request.participant_identity.as_deref(),
         })
         .await
+    }
+
+    async fn bridge_livekit_voice(
+        self,
+        request: LivekitVoiceBridgeRequest,
+    ) -> Result<ClaudeVoicePromptResponse, String> {
+        <ApiImpl as Api>::relay_livekit_audio(self, request).await
     }
 }
 

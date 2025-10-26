@@ -247,8 +247,9 @@
                 <header>
                         <h2>LiveKit Voice Rubber Ducking</h2>
                         <p>
-                                Join a LiveKit room, dictate your debugging questions, and listen to spoken
-                                answers from the Claude Agent SDK without leaving your editor.
+                                Use the embedded LiveKit Web SDK widgets to request microphone access, join your
+                                preferred room, and stream remote audio replies from the Claude Agent SDK back
+                                into the call.
                         </p>
                 </header>
 
