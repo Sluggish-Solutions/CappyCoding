@@ -246,7 +246,9 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
 
         drop(state);
 
+        info!("going to wake up in 60 seconds!");
         Timer::after_secs(60).await;
+        info!("woke up!");
     }
 }
 

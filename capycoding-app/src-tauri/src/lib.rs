@@ -8,11 +8,16 @@ use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::types::{
-    ClaudeMetricsRequest, ClaudeMetricsSnapshot, ClaudeQuestionRequest, ClaudeQuestionResponse,
-    ClaudeUsage, ClaudeVoicePromptRequest, ClaudeVoicePromptResponse, LivekitTokenRequest,
-    LivekitTokenResponse, LivekitVoiceBridgeRequest, PushClaudeMetricsRequest,
+use crate::{
+    ble::CapyCoder,
+    types::{
+        ClaudeMetricsRequest, ClaudeMetricsSnapshot, ClaudeQuestionRequest, ClaudeQuestionResponse,
+        ClaudeUsage, ClaudeVoicePromptRequest, ClaudeVoicePromptResponse, LivekitTokenRequest,
+        LivekitTokenResponse, LivekitVoiceBridgeRequest, PushClaudeMetricsRequest,
+    },
 };
+
+mod ble;
 
 const PYTHON_METRICS_SCRIPT: &str = include_str!("python/collect_metrics.py");
 
@@ -528,7 +533,7 @@ impl Api for ApiImpl {
 mod types;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+pub async fn run() {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()

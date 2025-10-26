@@ -26,128 +26,15 @@ export type LivekitVoiceBridgeRequest = { api_key: string; agent_url: string; au
 
 export type PushClaudeMetricsRequest = { metrics: ClaudeMetricsSnapshot; server_url: string; auth_token: string | null }
 
-const ARGS_MAP = { '':'{"ask_claude":["request"],"bridge_livekit_voice":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"],"relay_claude_voice":["request"]}' }
+const ARGS_MAP = { '':'{"ask_claude":["request"],"bridge_livekit_voice":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"],"relay_claude_voice":["request"],"relay_livekit_audio":["request"]}' }
 export type Router = { "": {ask_claude: (request: ClaudeQuestionRequest) => Promise<ClaudeQuestionResponse>, 
 bridge_livekit_voice: (request: LivekitVoiceBridgeRequest) => Promise<ClaudeVoicePromptResponse>, 
 collect_claude_metrics: (request: ClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>, 
 generate_livekit_token: (request: LivekitTokenRequest) => Promise<LivekitTokenResponse>, 
 push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>, 
-relay_claude_voice: (request: ClaudeVoicePromptRequest) => Promise<ClaudeVoicePromptResponse>} };
+relay_claude_voice: (request: ClaudeVoicePromptRequest) => Promise<ClaudeVoicePromptResponse>, 
+relay_livekit_audio: (request: LivekitVoiceBridgeRequest) => Promise<ClaudeVoicePromptResponse>} };
 
-export type ClaudeMetricsRequest = {
-        data_dir: string | null
-        hours_back: number | null
-        python_path: string | null
-}
-
-export type ClaudeMetricsSnapshot = {
-        timestamp: string
-        window_hours: number
-        burn_rate_per_hour: number
-        total_cost_usd: number
-        input_tokens: number
-        output_tokens: number
-        cache_creation_tokens: number
-        cache_read_tokens: number
-        total_tokens: number
-        session_count: number
-        active_session_id: string | null
-        last_activity: string
-        source: string | null
-}
-
-export type PushClaudeMetricsRequest = {
-        metrics: ClaudeMetricsSnapshot
-        server_url: string
-        auth_token: string | null
-}
-
-export type ClaudeQuestionRequest = {
-        api_key: string
-        question: string
-        code_context: string | null
-        model: string | null
-        max_output_tokens: number | null
-        temperature: number | null
-        system_prompt: string | null
-}
-
-export type ClaudeUsage = {
-        input_tokens: number
-        output_tokens: number
-}
-
-export type ClaudeQuestionResponse = {
-        answer: string
-        model: string
-        stop_reason: string | null
-        usage: ClaudeUsage | null
-}
-
-export type LivekitTokenRequest = {
-        api_key: string
-        api_secret: string
-        identity: string
-        room: string
-        name: string | null
-        metadata: string | null
-        ttl_seconds: number | null
-        can_publish: boolean | null
-        can_subscribe: boolean | null
-        can_publish_data: boolean | null
-}
-
-export type LivekitTokenResponse = {
-        token: string
-        expires_at: string
-}
-
-export type ClaudeVoicePromptRequest = {
-        api_key: string
-        agent_url: string
-        audio_base64: string
-        mime_type: string
-        agent_id: string | null
-        response_voice: string | null
-        session_id: string | null
-}
-
-export type ClaudeVoicePromptResponse = {
-        transcript: string
-        reply_text: string
-        reply_audio_base64: string | null
-        reply_audio_mime_type: string | null
-        session_id: string | null
-}
-
-export type LivekitVoiceBridgeRequest = {
-        api_key: string
-        agent_url: string
-        audio_base64: string
-        mime_type: string
-        agent_id: string | null
-        response_voice: string | null
-        session_id: string | null
-        room_name: string | null
-        participant_identity: string | null
-}
-
-const ARGS_MAP = {
-        '':
-                '{"ask_claude":["request"],"bridge_livekit_voice":["request"],"collect_claude_metrics":["request"],"generate_livekit_token":["request"],"push_claude_metrics":["request"],"relay_claude_voice":["request"],"relay_livekit_audio":["request"]}',
-}
-
-export type Router = {
-        '': {
-                ask_claude: (request: ClaudeQuestionRequest) => Promise<ClaudeQuestionResponse>
-                bridge_livekit_voice: (request: LivekitVoiceBridgeRequest) => Promise<ClaudeVoicePromptResponse>
-                collect_claude_metrics: (request: ClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>
-                generate_livekit_token: (request: LivekitTokenRequest) => Promise<LivekitTokenResponse>
-                push_claude_metrics: (request: PushClaudeMetricsRequest) => Promise<ClaudeMetricsSnapshot>
-                relay_claude_voice: (request: ClaudeVoicePromptRequest) => Promise<ClaudeVoicePromptResponse>
-                relay_livekit_audio: (request: LivekitVoiceBridgeRequest) => Promise<ClaudeVoicePromptResponse>
-        }
-}
 
 export const createTauRPCProxy = () => createProxy<Router>(ARGS_MAP)
 export type { InferCommandOutput }
