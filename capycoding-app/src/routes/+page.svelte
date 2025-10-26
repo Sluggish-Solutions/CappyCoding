@@ -1000,12 +1000,12 @@
                 </div>
 
                 {#if agentStatusMessage}
-                        <div style="margin-top: 1rem; padding: 0.75rem; background: {agentRunning ? '#d4edda' : '#f8f9fa'}; border: 1px solid {agentRunning ? '#c3e6cb' : '#dee2e6'}; border-radius: 4px; font-size: 0.9rem;">
+                        <div style="margin-top: 1rem; padding: 0.75rem; border: 1px solid {agentRunning ? '#c3e6cb' : '#dee2e6'}; border-radius: 4px; font-size: 0.9rem;">
                                 <strong>Status:</strong> {agentStatusMessage}
                         </div>
                 {/if}
 
-                <details style="margin-top: 1rem; padding: 0.5rem; background: #e3f2fd; border-radius: 4px;">
+                <details style="margin-top: 1rem; padding: 0.5rem; border-radius: 4px;">
                         <summary style="cursor: pointer; font-weight: bold;">ℹ️ How to get API keys</summary>
                         <div style="margin-top: 0.5rem; font-size: 0.9rem; line-height: 1.6;">
                                 <p><strong>LiveKit Cloud:</strong></p>
