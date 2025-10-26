@@ -18,6 +18,12 @@ const PYTHON_METRICS_SCRIPT: &str = include_str!("python/collect_metrics.py");
 
 #[taurpc::procedures(export_to = "../src/types.ts")]
 trait Api {
+    async fn connect_device(
+        github_token: String,
+        wifi_name: String,
+        wifi_pass: String,
+    ) -> Result<String, String>;
+
     async fn collect_claude_metrics(
         request: ClaudeMetricsRequest,
     ) -> Result<ClaudeMetricsSnapshot, String>;
@@ -253,6 +259,21 @@ impl ApiImpl {
 
 #[taurpc::resolvers]
 impl Api for ApiImpl {
+    async fn connect_device(
+        self,
+        github_token: String,
+        wifi_name: String,
+        wifi_pass: String,
+    ) -> Result<String, String> {
+        // how to wait for 3 seconds
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        if wifi_pass == "cappy" {
+            Ok("connected".to_string())
+        } else {
+            Err("BECOME CAPPY".to_string())
+        }
+    }
+
     async fn collect_claude_metrics(
         self,
         request: ClaudeMetricsRequest,
