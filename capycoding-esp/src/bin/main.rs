@@ -7,7 +7,7 @@
 )]
 
 use capycoding_esp::ble::ble_task;
-use capycoding_esp::wifi::wifi_task;
+use capycoding_esp::wifi::{connection, net_task, wifi_task};
 use capycoding_esp::{CapyConfig, WeactTermInitPins, ui_task};
 use embassy_executor::Spawner;
 use embassy_net::dns::DnsSocket;
@@ -21,8 +21,8 @@ use esp_hal::rng::Rng;
 use esp_hal::spi::{self, master::Spi};
 use esp_hal::{time::Rate, timer::timg::TimerGroup};
 use esp_radio::wifi::{
-    self, ClientConfig, Config as WifiConfig, ModeConfig, WifiController, WifiDevice, WifiEvent,
-    WifiStaState,
+    self, ClientConfig, Config as WifiConfig, ModeConfig, ScanConfig, WifiController, WifiDevice,
+    WifiEvent, WifiStaState,
 };
 use esp_storage::FlashStorage;
 
@@ -39,8 +39,8 @@ esp_bootloader_esp_idf::esp_app_desc!();
 
 use embassy_sync::mutex::Mutex;
 
-const SSID: &str = "akcasa Guest";
-const PASSWORD: &str = "Chigerian123";
+const SSID: &str = "Surendra S21";
+const PASSWORD: &str = "Surendra2006";
 
 pub static CONFIG: StaticCell<Mutex<CriticalSectionRawMutex, Option<CapyConfig>>> =
     StaticCell::new();
@@ -117,17 +117,6 @@ async fn main(spawner: Spawner) -> () {
 
     let capy_ref = &*capyconfig;
 
-    spawner
-        .spawn(ble_task(radio, peripherals.BT, capy_ref))
-        .unwrap();
-
-    // spawner
-    //     .spawn(wifi_task(radio, peripherals.WIFI, capy_ref))
-    //     .unwrap();
-    spawner
-        .spawn(ui_task(spi_bus, term_init_pins, capy_ref))
-        .unwrap();
-
     let (wifi_controller, ifaces) =
         esp_radio::wifi::new(radio, peripherals.WIFI, WifiConfig::default()).unwrap();
 
@@ -138,8 +127,6 @@ async fn main(spawner: Spawner) -> () {
     let tls_seed = rng.random() as u64 | ((rng.random() as u64) << 32);
 
     let dhcp_config = DhcpConfig::default();
-    // dhcp_config.hostname = Some(String::from_str("implRust").unwrap());
-
     let config = embassy_net::Config::dhcpv4(dhcp_config);
     // Init network stack
     let (stack, runner) = embassy_net::new(
@@ -149,128 +136,20 @@ async fn main(spawner: Spawner) -> () {
         net_seed,
     );
 
-    
-
-    spawner.spawn(connection(wifi_controller)).ok();
-    spawner.spawn(net_task(runner)).ok();
-
-    wait_for_connection(stack).await;
-    access_website(stack, tls_seed).await;
-
-    // let esp_wifi_ctrl = &*mk_static!(
-    //     Esp<'static>,
-    //     esp_wifi::init(timer1.timer0, rng.clone(), peripherals.RADIO_CLK,).unwrap()
-    // );
-}
-
-#[embassy_executor::task]
-async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
-    runner.run().await
-}
-
-#[embassy_executor::task]
-async fn connection(mut controller: WifiController<'static>) {
-    info!("start connection task");
-    info!("Device capabilities: {:?}", controller.capabilities());
-    loop {
-        if esp_radio::wifi::sta_state() == WifiStaState::Connected {
-            // wait until we're no longer connected
-            controller.wait_for_event(WifiEvent::StaDisconnected).await;
-            Timer::after(Duration::from_millis(5000)).await
-        }
-
-        if !matches!(controller.is_started(), Ok(true)) {
-            // let client_config = Config::dhcpv4(ClientConfig {
-            //     ssid: SSID.try_into().unwrap(),
-            //     password: PASSWORD.try_into().unwrap(),
-            //     ..Default::default()
-            // });
-            // let client_config =ModeConfig::Client(ClientConfig::default().with_ssid("lol".to_owned()));
-            let ssid: String = SSID.into();
-            let password: String = PASSWORD.into();
-
-            let wifi_config = esp_radio::wifi::ClientConfig::default()
-                .with_ssid(ssid)
-                .with_password(password);
-
-            let mode_client = ModeConfig::Client(wifi_config);
-
-            controller.set_config(&mode_client).unwrap();
-
-            // controller.set_configuration(&client_config).unwrap();
-            // println!("Starting wifi");
-            controller.start_async().await.unwrap();
-            // println!("Wifi started!");
-        }
-        info!("About to connect...");
-
-        match controller.connect_async().await {
-            Ok(_) => info!("Wifi connected!"),
-            Err(e) => {
-                info!("Failed to connect to wifi: {e:?}");
-                Timer::after(Duration::from_millis(5000)).await
-            }
-        }
-    }
-}
-
-async fn wait_for_connection(stack: Stack<'_>) {
-    info!("Waiting for link to be up");
-    loop {
-        if stack.is_link_up() {
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
-
-    info!("Waiting to get IP address...");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            info!("Got IP: {}", config.address);
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
-}
-
-async fn access_website(
-    // stack: &'static Stack<WifiDevice<'static, WifiStaDevice>>
-    stack: Stack<'_>
-
-//     stack: &Stack<esp_radio::wifi::WifiDevice>,
-    
-
-
-    , tls_seed: u64) {
-
-    let mut rx_buffer = [0; 4096];
-    let mut tx_buffer = [0; 4096];
-    let dns = DnsSocket::new(stack);
-    let tcp_state = TcpClientState::<1, 4096, 4096>::new();
-    let tcp = TcpClient::new(stack, &tcp_state);
-
-    let tls = TlsConfig::new(
-        tls_seed,
-        &mut rx_buffer,
-        &mut tx_buffer,
-        reqwless::client::TlsVerify::None,
-    );
-
-    let mut client = HttpClient::new_with_tls(&tcp, &dns, tls);
-    let mut buffer = [0u8; 4096];
-    let mut http_req = client
-        .request(
-            reqwless::request::Method::GET,
-            // "https://jsonplaceholder.typicode.com/posts/1",
-"https://cappycoding.koyeb.app/"
-        )
-        .await
+    // BLE handler
+    spawner
+        .spawn(ble_task(radio, peripherals.BT, capy_ref))
         .unwrap();
-    let response = http_req.send(&mut buffer).await.unwrap();
 
-    info!("Got response");
-    let res = response.body().read_to_end().await.unwrap();
+    // UI handler
+    spawner
+        .spawn(ui_task(spi_bus, term_init_pins, capy_ref))
+        .unwrap();
 
-    let content = core::str::from_utf8(res).unwrap();
-    info!("{}", content);
+    // wifi util tasks
+    spawner.spawn(connection(wifi_controller)).unwrap();
+    spawner.spawn(net_task(runner)).unwrap();
+
+    // main wifi task
+    spawner.spawn(wifi_task(stack, tls_seed)).unwrap();
 }
