@@ -52,7 +52,7 @@
 		widgets: {
 			'github-summary': {
 				id: 'github-summary',
-				abbr: 'GitHub',
+				abbr: 'GitHub PRs',
 				desc: 'Pull requests, commits and issues at a glance',
 				content: 'PRs: 30 · Commits: 55'
 			},
@@ -65,13 +65,13 @@
 			},
 			'github-growth': {
 				id: 'github-growth',
-				abbr: 'GH Growth',
+				abbr: 'GitHub Stars',
 				desc: 'Stars gained and followers trend',
 				content: 'Followers: 30 · Stars: 20'
 			},
 			'github-actions': {
 				id: 'github-actions',
-				abbr: 'GH Actions',
+				abbr: 'GitHub Workflows',
 				desc: 'Workflow activity and automation health',
 				content: 'Runs: 12 · Failures: 1'
 			},
