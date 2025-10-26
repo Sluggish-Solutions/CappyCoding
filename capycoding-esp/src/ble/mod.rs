@@ -11,7 +11,7 @@ use embassy_futures::select::select;
 #[allow(unused_imports)]
 use trouble_host::prelude::*;
 
-use crate::{CapyConfig, get_capy_config};
+use crate::{CapyConfig, get_capy_config, ui::get_capy_state};
 
 const CONNECTIONS_MAX: usize = 1;
 const L2CAP_CHANNELS_MAX: usize = 1;
@@ -19,6 +19,15 @@ const L2CAP_CHANNELS_MAX: usize = 1;
 #[gatt_server]
 struct Server {
     config_service: ConfigService,
+    claude_service: ClaudeService,
+}
+
+#[gatt_service(uuid = ble_types::CLAUDE_SERVICE_UUID)]
+struct ClaudeService {
+    #[characteristic(uuid = ble_types::CLAUDE_USED_TOKENS_CHARACTERISTIC, write, read, notify)]
+    tokens_used: u32,
+    #[characteristic(uuid = ble_types::CLAUDE_MAX_TOKENS_CHARACTERISTIC, write, read, notify)]
+    max_tokens: u32,
 }
 
 #[gatt_service(uuid = ble_types::CONFIG_SERVICE_UUID)]
@@ -32,8 +41,6 @@ struct ConfigService {
     #[characteristic(uuid = ble_types::GITHUB_TOKEN_CHARACTERISTIC, write, read, notify)]
     github_token: heapless::Vec<u8, 50>,
 }
-
-struct ClaudeService {}
 
 #[embassy_executor::task]
 pub async fn ble_task(radio: &'static RadioController<'static>, bt: peripherals::BT<'static>) {
@@ -102,6 +109,8 @@ async fn gatt_events_task<P: PacketPool>(
     let ssid = &server.config_service.wifi_ssid;
     let passwd = &server.config_service.wifi_password;
     let gh_token = &server.config_service.github_token;
+    let used = &server.claude_service.tokens_used;
+    let max = &server.claude_service.max_tokens;
 
     let reason = loop {
         match conn.next().await {
@@ -152,6 +161,43 @@ async fn gatt_events_task<P: PacketPool>(
                             let x = heapless::Vec::from_slice(event.data()).unwrap();
                             if HeaplessString::from_utf8(x.clone()).is_ok() {
                                 server.set(gh_token, &x).unwrap();
+                            }
+                        }
+
+                        if event.handle() == max.handle {
+                            info!(
+                                "[gatt] Write Event to max Characteristic: {:?}",
+                                event.data()
+                            );
+
+                            let x = event.data();
+                            if x.len() >= 4 {
+                                // Convert first 4 bytes to u32
+                                let bytes_array: [u8; 4] = [x[0], x[1], x[2], x[3]];
+                                let y: u32 = u32::from_le_bytes(bytes_array);
+
+                                server.set(max, &y).unwrap();
+                                if let Some(state) = get_capy_state().lock().await.as_mut() {
+                                    state.max_tokens = y
+                                } else {
+                                };
+
+                                // Use y here...
+                            }
+                        }
+                        if event.handle() == used.handle {
+                            info!(
+                                "[gatt] Write Event to used Characteristic: {:?}",
+                                event.data()
+                            );
+
+                            let x = event.data();
+                            if x.len() >= 4 {
+                                // Convert first 4 bytes to u32
+                                let bytes_array: [u8; 4] = [x[0], x[1], x[2], x[3]];
+                                let y: u32 = u32::from_le_bytes(bytes_array);
+
+                                server.set(used, &y).unwrap();
                             }
                         }
 

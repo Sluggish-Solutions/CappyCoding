@@ -29,7 +29,7 @@ mod api;
 pub async fn wifi_task(stack: Stack<'static>, tls_seed: u64) {
     wait_for_connection(stack).await;
 
-    access_website(stack, tls_seed).await;
+    fetch_github_metrics(stack, tls_seed).await;
 }
 
 #[embassy_executor::task]
@@ -125,7 +125,7 @@ async fn wait_for_connection(stack: Stack<'_>) {
     }
 }
 
-async fn access_website(stack: Stack<'_>, tls_seed: u64) {
+async fn fetch_github_metrics(stack: Stack<'_>, tls_seed: u64) {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
     let dns = DnsSocket::new(stack);
@@ -142,132 +142,185 @@ async fn access_website(stack: Stack<'_>, tls_seed: u64) {
     let mut client: HttpClient<'_, TcpClient<'_, 1, 4096, 4096>, DnsSocket<'_>> =
         HttpClient::new_with_tls(&tcp, &dns, tls);
 
-    let mut buffer = [0u8; 4096];
+    const BASE_URL: &str = "https://cappycoding.koyeb.app/metrics";
+    // const USER: &str = "akhil-datla";
+    const USER: &str = "suri-codes";
+
+    // Macro to reduce repetitive request code
+    macro_rules! fetch {
+        ($url:expr, $buffer:expr, $headers:expr) => {{
+            let http_req = match client.request(reqwless::request::Method::GET, $url).await {
+                Ok(req) => Some(req.headers($headers)),
+                Err(e) => {
+                    error!("Request creation failed for {}: {:?}", $url, e);
+                    None
+                }
+            };
+
+            match http_req {
+                Some(mut req) => match req.send($buffer).await {
+                    Ok(response) => match response.body().read_to_end().await {
+                        Ok(res) => match core::str::from_utf8(res) {
+                            Ok(content) => Some(content),
+                            Err(e) => {
+                                error!("Invalid UTF-8 in response from {}: {:?}", $url, e);
+                                None
+                            }
+                        },
+                        Err(e) => {
+                            error!("Failed to read response body for {}: {:?}", $url, e);
+                            None
+                        }
+                    },
+                    Err(e) => {
+                        error!("Request failed for {}: {:?}", $url, e);
+                        None
+                    }
+                },
+                None => None,
+            }
+        }};
+    }
 
     loop {
+        // Wait for token
         let token = loop {
             let config = get_capy_config().lock().await;
-
-            match config
-                .as_ref()
-                .and_then(|c| Some(c.api_tokens.github.clone()))
-            {
-                Some(token) => break token.clone(),
-                None => {
-                    info!("Waiting for github token!");
-                    Timer::after(Duration::from_millis(500)).await
-                }
+            if let Some(ref config) = *config {
+                let x = config.api_tokens.github.clone();
+                break x;
             }
+            drop(config);
+            info!("Waiting for github token!");
+            Timer::after(Duration::from_millis(500)).await;
         };
 
         let auth_header = format!("token {}", token);
-
         let headers = [
             ("Authorization", auth_header.as_str()),
             ("User-Agent", "ESP32-Client"),
         ];
 
-        let mut http_req = client
-            .request(
-                reqwless::request::Method::GET,
-                "https://cappycoding.koyeb.app/metrics/prs?user=suri-codes&state=open&per_page=5",
-            )
-            .await
-            .unwrap()
-            .headers(&headers);
+        let mut buffer = [0u8; 2048];
 
-        let response = match http_req.send(&mut buffer).await {
-            Ok(o) => o,
-            Err(e) => {
-                error!("{e:?}");
+        // Fetch PRs
+        info!("Fetching PRs...");
+        let prs_url = format!("{}/prs?user={}&per_page=5", BASE_URL, USER);
+        let prs = match fetch!(&prs_url, &mut buffer, &headers) {
+            Some(content) => {
+                let parsed = parse_pull_requests(content);
+                info!("PRs: {:#?}", parsed);
+                parsed
+            }
+            None => {
+                error!("Failed to fetch PRs, retrying in 60s");
+                Timer::after_secs(60).await;
                 continue;
             }
         };
 
-        info!("Got response");
-        let res = response.body().read_to_end().await.unwrap();
+        // Fetch workflows
+        info!("Fetching workflows...");
+        let workflows_url = format!("{}/workflows?user={}&per_page=5", BASE_URL, USER);
+        let workflows = match fetch!(&workflows_url, &mut buffer, &headers) {
+            Some(content) => {
+                let parsed = parse_workflows(content);
+                info!("Workflows: {:#?}", parsed);
+                parsed
+            }
+            None => {
+                error!("Failed to fetch workflows, retrying in 60s");
+                Timer::after_secs(60).await;
+                continue;
+            }
+        };
 
-        let content = core::str::from_utf8(res).unwrap();
+        // Fetch commits - all time
+        info!("Fetching all-time commits...");
+        let all_time_url = format!("{}/commits?user={}", BASE_URL, USER);
+        let all_time = match fetch!(&all_time_url, &mut buffer, &headers) {
+            Some(content) => content.to_owned(),
+            None => {
+                error!("Failed to fetch all-time commits, retrying in 60s");
+                Timer::after_secs(60).await;
+                continue;
+            }
+        };
 
-        let prs = parse_pull_requests(content);
-        info!("pr's: {:#?}", prs);
+        // Fetch commits - last week
+        info!("Fetching last week commits...");
+        let last_week_url = format!(
+            "{}/commits?user={}&since=2025-10-19T00:00:00Z",
+            BASE_URL, USER
+        );
+        let last_week = match fetch!(&last_week_url, &mut buffer, &headers) {
+            Some(content) => content.to_owned(),
+            None => {
+                error!("Failed to fetch last week commits, retrying in 60s");
+                Timer::after_secs(60).await;
+                continue;
+            }
+        };
 
-        drop(http_req);
+        // Fetch commits - last month
+        info!("Fetching last month commits...");
+        let last_month_url = format!(
+            "{}/commits?user={}&since=2025-09-26T00:00:00Z",
+            BASE_URL, USER
+        );
+        let last_month = match fetch!(&last_month_url, &mut buffer, &headers) {
+            Some(content) => content.to_owned(),
+            None => {
+                error!("Failed to fetch last month commits, retrying in 60s");
+                Timer::after_secs(60).await;
+                continue;
+            }
+        };
 
-        info!("making new request");
-        let mut http_req = match client
-            .request(
-                reqwless::request::Method::GET,
-                "https://cappycoding.koyeb.app/metrics/workflows?user=suri-codes&per_page=5",
-            )
-            .await
+        let commit_data = parse_commits(&all_time, &last_month, &last_week);
+        info!("Commits: {:#?}", commit_data);
+
+        // Update state
         {
-            Ok(o) => o.headers(&headers),
-            Err(_) => continue,
-        };
+            let mut state = get_capy_state().lock().await;
+            let carousel_index = state.as_ref().map(|s| s.carousel_index).unwrap_or(0);
 
-        let response = match http_req.send(&mut buffer).await {
-            Ok(o) => o,
-            Err(e) => {
-                error!("{e:#?}");
-                continue;
-            }
-        };
-        info!("Got response");
-        let res = response.body().read_to_end().await.unwrap();
+            let max_tokens = state.as_ref().map(|s| s.max_tokens).unwrap_or(0);
+            let used = state.as_ref().map(|s| s.used_tokens).unwrap_or(0);
+            *state = Some(CapyState {
+                commits: commit_data,
+                pr: prs,
+                workflow: workflows,
+                carousel_index,
+                used_tokens: used,
+                max_tokens,
+            });
+        }
 
-        let content = core::str::from_utf8(res).unwrap();
-
-        let workflows = parse_workflows(content);
-        info!("workflows: {:#?}", workflows);
-        drop(http_req);
-
-        info!("making commits request");
-        let mut http_req = client
-            .request(
-                reqwless::request::Method::GET,
-                // "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes&since=2025-10-24T00:00:00Z",
-                "https://cappycoding.koyeb.app/metrics/commits?user=suri-codes",
-            )
-            .await
-            .unwrap()
-            .headers(&headers);
-
-        let response = http_req.send(&mut buffer).await.unwrap();
-        info!("Got response");
-        let res = response.body().read_to_end().await.unwrap();
-
-        let content = core::str::from_utf8(res).unwrap();
-
-        let commit_data = parse_commits(content);
-        info!("commits: {:#?}", commit_data);
-
-        let mut state = get_capy_state().lock().await;
-
-        *state = Some(CapyState {
-            commits: commit_data,
-            pr: prs,
-            workflow: workflows,
-        });
-
-        drop(state);
-
-        info!("going to wake up in 60 seconds!");
+        info!("Successfully updated metrics. Next update in 60 seconds.");
         Timer::after_secs(60).await;
-        info!("woke up!");
     }
 }
-
 #[derive(Debug)]
 pub struct CommitData {
     pub total: u32,
+    pub last_week: u32,
+    pub last_month: u32,
 }
 
-fn parse_commits(buffer: &str) -> CommitData {
-    let json = JSONValue::load(buffer);
+fn parse_commits(all_time: &str, last_month: &str, last_week: &str) -> CommitData {
+    let json = JSONValue::load(all_time);
     let x = json.get_key_value("total").unwrap().read_integer().unwrap();
+    let json = JSONValue::load(last_month);
+    let y = json.get_key_value("total").unwrap().read_integer().unwrap();
+    let json = JSONValue::load(last_week);
+    let z = json.get_key_value("total").unwrap().read_integer().unwrap();
 
-    CommitData { total: x as u32 }
+    CommitData {
+        total: x as u32,
+        last_week: z as u32,
+        last_month: y as u32,
+    }
 }
 
 #[derive(Debug)]

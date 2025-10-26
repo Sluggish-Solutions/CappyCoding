@@ -47,7 +47,7 @@ async fn main(spawner: Spawner) -> () {
 
     // shit ton of memory alloc
     esp_alloc::heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 66320);
-    esp_alloc::heap_allocator!(size: 170* 1024);
+    esp_alloc::heap_allocator!(size: 160* 1024);
 
     // rtos init
     let timg0 = TimerGroup::new(peripherals.TIMG0);

@@ -59,7 +59,9 @@ pub fn setup_weact_term<'a>(
     driver.init().unwrap();
 
     let config = EmbeddedBackendConfig {
-        font_regular: fonts::MONO_10X20,
+        font_regular: fonts::MONO_6X13,
+        font_bold: Some(fonts::MONO_6X13_BOLD),
+        font_italic: Some(fonts::MONO_6X13_ITALIC),
         flush_callback: Box::new(move |d| {
             driver.fast_update(d).unwrap();
         }),
@@ -79,14 +81,17 @@ pub async fn ui_task(spi: Spi<'static, Blocking>, term_init_pins: WeactTermInitP
     let mut term = setup_weact_term(spi, &mut display, term_init_pins);
     loop {
         let config = get_capy_config().lock().await;
-        let state = get_capy_state().lock().await;
+        let mut state = get_capy_state().lock().await;
         // let config: embassy_sync::mutex::MutexGuard<
         //     '_,
         //     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         //     Option<crate::CapyConfig>,
         // > = config_ref.lock().await;
 
+        if let Some(ref mut state) = *state {
+            state.carousel_index += 1;
+        }
         term.draw(|f| root_draw(f, config, state)).unwrap();
-        Timer::after_millis(5).await;
+        Timer::after_secs(2).await;
     }
 }

@@ -115,8 +115,8 @@ ratatui-core = { git = "https://github.com/suri-codes/ratatui.git", branch = "ma
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization
-# opt-level = "s"
-opt-level = 3
+opt-level = "z"
+# opt-level = 3
 
 [profile.release]
 codegen-units    = 1     # LLVM can perform better optimizations using a single thread

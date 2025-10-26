@@ -21,14 +21,6 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use once_cell::sync::OnceCell;
 
-// Your state structure
-#[derive(Default)]
-pub struct AppState {
-    pub counter: u32,
-    pub data: Option<String>,
-    // Add your fields here
-}
-
 static CONFIG: OnceCell<Mutex<CriticalSectionRawMutex, Option<CapyConfig>>> = OnceCell::new();
 
 // Initialize the singleton (call once at startup)
