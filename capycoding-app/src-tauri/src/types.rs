@@ -73,3 +73,23 @@ pub struct LivekitTokenResponse {
     pub token: String,
     pub expires_at: String,
 }
+
+#[taurpc::ipc_type]
+pub struct ClaudeVoicePromptRequest {
+    pub api_key: String,
+    pub agent_url: String,
+    pub audio_base64: String,
+    pub mime_type: String,
+    pub agent_id: Option<String>,
+    pub response_voice: Option<String>,
+    pub session_id: Option<String>,
+}
+
+#[taurpc::ipc_type]
+pub struct ClaudeVoicePromptResponse {
+    pub transcript: String,
+    pub reply_text: String,
+    pub reply_audio_base64: Option<String>,
+    pub reply_audio_mime_type: Option<String>,
+    pub session_id: Option<String>,
+}

@@ -4,13 +4,14 @@ use chrono::{DateTime, TimeDelta, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use reqwest::StatusCode;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use crate::types::{
     ClaudeMetricsRequest, ClaudeMetricsSnapshot, ClaudeQuestionRequest, ClaudeQuestionResponse,
-    ClaudeUsage, LivekitTokenRequest, LivekitTokenResponse, PushClaudeMetricsRequest,
+    ClaudeUsage, ClaudeVoicePromptRequest, ClaudeVoicePromptResponse, LivekitTokenRequest,
+    LivekitTokenResponse, PushClaudeMetricsRequest,
 };
 
 const PYTHON_METRICS_SCRIPT: &str = include_str!("python/collect_metrics.py");
@@ -30,6 +31,10 @@ trait Api {
     async fn generate_livekit_token(
         request: LivekitTokenRequest,
     ) -> Result<LivekitTokenResponse, String>;
+
+    async fn relay_claude_voice(
+        request: ClaudeVoicePromptRequest,
+    ) -> Result<ClaudeVoicePromptResponse, String>;
 }
 
 #[derive(Clone)]
@@ -332,6 +337,122 @@ impl Api for ApiImpl {
         Ok(LivekitTokenResponse {
             token,
             expires_at: expires_at.to_rfc3339(),
+        })
+    }
+
+    async fn relay_claude_voice(
+        self,
+        request: ClaudeVoicePromptRequest,
+    ) -> Result<ClaudeVoicePromptResponse, String> {
+        if request.api_key.trim().is_empty() {
+            return Err("Claude Agent API key is required".to_string());
+        }
+        if request.agent_url.trim().is_empty() {
+            return Err("Claude Agent base URL is required".to_string());
+        }
+        if request.audio_base64.trim().is_empty() {
+            return Err("Audio payload is required".to_string());
+        }
+        if request.mime_type.trim().is_empty() {
+            return Err("Audio MIME type is required".to_string());
+        }
+
+        let mut url = request.agent_url.trim_end_matches('/').to_string();
+        url.push_str("/v1/voice/exchange");
+
+        let mut payload = json!({
+            "audio": {
+                "base64": request.audio_base64,
+                "mime_type": request.mime_type,
+            },
+        });
+
+        if let Value::Object(ref mut map) = payload {
+            if let Some(agent_id) = request.agent_id.and_then(|id| {
+                let trimmed = id.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }) {
+                map.insert("agent_id".to_string(), Value::String(agent_id));
+            }
+
+            if let Some(session_id) = request.session_id.and_then(|id| {
+                let trimmed = id.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }) {
+                map.insert("session_id".to_string(), Value::String(session_id));
+            }
+
+            if let Some(voice) = request.response_voice.and_then(|voice| {
+                let trimmed = voice.trim().to_string();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            }) {
+                map.insert("voice".to_string(), Value::String(voice));
+            }
+        }
+
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(&request.api_key)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|err| format!("failed to call Claude Agent voice endpoint: {err}"))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!(
+                "Claude Agent voice endpoint error ({status}): {body}"
+            ));
+        }
+
+        let parsed: Value = response
+            .json()
+            .await
+            .map_err(|err| format!("failed to decode Claude Agent voice response: {err}"))?;
+
+        let transcript = parsed
+            .get("transcript")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let reply_text = parsed
+            .pointer("/reply/text")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let reply_audio_base64 = parsed
+            .pointer("/reply/audio/base64")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let reply_audio_mime_type = parsed
+            .pointer("/reply/audio/mime_type")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        let session_id = parsed
+            .get("session_id")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+
+        Ok(ClaudeVoicePromptResponse {
+            transcript,
+            reply_text,
+            reply_audio_base64,
+            reply_audio_mime_type,
+            session_id,
         })
     }
 }
