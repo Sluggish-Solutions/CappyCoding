@@ -2,10 +2,10 @@ import json
 import os
 import sys
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict
 
 
-def _load_config() -> dict[str, Any]:
+def _load_config() -> Dict[str, Any]:
     raw = os.environ.get("CLAUDE_METRICS_CONFIG", "{}")
     try:
         config = json.loads(raw)
@@ -49,7 +49,7 @@ def main() -> None:
 
     if not entries:
         window_hours = float(hours_back_int or 1)
-        result: dict[str, Any] = {
+        result: Dict[str, Any] = {
             "timestamp": _serialize_datetime(now),
             "window_hours": window_hours,
             "burn_rate_per_hour": 0.0,
